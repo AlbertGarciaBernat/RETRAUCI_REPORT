@@ -9,6 +9,7 @@ date: "2026-06-22"
 library(dplyr)
 library(ggplot2)
 library(tidyr)
+library(lubridate)
 ```
 
 ```{r, echo=FALSE}
@@ -17,14 +18,115 @@ df <- read.csv2(
   stringsAsFactors = TRUE
 )
 
-#colnames(df)
+colnames(df)
+```
+
+#Preprocessing
+
+
+# 1. Convert dates/times
+```{r, echo=FALSE}
+date_vars <- c(
+  "fecha_trauma", "fecha_ingreso_hospital", "fecha_ingreso_uci",
+  "fecha_alta_uci", "fecha_alta_hospital", "fecha_exitus",
+  "fecha_reingreso_uci", "fecha_alta_reingreso"
+)
+
+time_vars <- c(
+  "hora_trauma", "hora_ingreso_hospital",
+  "hora_ingreso_uci", "hora_exitus"
+)
+
+date_vars <- intersect(date_vars, names(df))
+time_vars <- intersect(time_vars, names(df))
+
+df[date_vars] <- lapply(df[date_vars], function(x) {
+  parse_date_time(x, orders = c("dmy", "ymd", "dmy HMS", "ymd HMS"))
+})
+
+df[time_vars] <- lapply(df[time_vars], function(x) {
+  x <- trimws(as.character(x))
+  x[x == ""] <- NA
+  parse_date_time(x, orders = c("HMS", "HM", "H M", "I M p"))
+})
+```
+
+# 2. Convert numeric variables
+```{r, echo=FALSE}
+numeric_vars <- c(
+  "edad", "creatinina_inicial", "creatinina_24h",
+  "hemoglobina_inicial", "hemoglobina_24h",
+  "hematocrito_inicial", "hematocrito_24h",
+  "plaquetas_inicial", "plaquetas_24h",
+  "inr_inicial", "inr_24h",
+  "protrombina_inicial", "protrombina_24h",
+  "ttpa_inicial", "ttpa_24h",
+  "fibrinogeno_inicial", "fibrinogeno_24h",
+  "ph_inicial", "ph_24h",
+  "exceso_base_inicial", "exceso_base_24h",
+  "lactico_inicial", "lactico_24h",
+  "etanol_cuantitativo_sangre",
+  "fc_ph", "fr_ph", "tas_ph",
+  "fc_hosp", "fr_hosp", "tas_hosp",
+  "gcs_ocular", "gcs_motor", "gcs_verbal",
+  "gcs_total_introducido",
+  "pto_fr", "pto_tas", "pto_gcs",
+  "mais1", "mais2", "mais3", "mais4", "mais5", "mais6",
+  "rts_t", "rts", "iss", "niss", "ps",
+  "hematies_concentrado", "plasma_bolsas", "plaquetas",
+  "ratio_hematies", "ratio_plaquetas",
+  "vmec_dias", "traqueotomia_dias",
+  "dias_pic", "dias_uci", "dias_hospital",
+  "gcs_alta", "rscore_edad", "rscore_aco",
+  "rscore_iot_ph", "rscore_mec", "rscore_pupilas",
+  "rscore_gcs", "rscore_complicaciones",
+  "rscore_ais_cabeza", "rscore_ais_torax",
+  "retrascore"
+)
+
+numeric_vars <- intersect(numeric_vars, names(df))
+
+df[numeric_vars] <- lapply(df[numeric_vars], function(x) {
+  x <- trimws(as.character(x))
+  x[x == ""] <- NA
+  x <- gsub(",", ".", x)
+  as.numeric(x)
+})
+```
+
+# 3. Convert categorical variables
+```{r, echo=FALSE}
+categorical_vars <- setdiff(
+  names(df),
+  c(date_vars, time_vars, numeric_vars)
+)
+
+df[categorical_vars] <- lapply(df[categorical_vars], function(x) {
+  factor(trimws(as.character(x)))
+})
+
+summary(df$edad)
+class(df$edad)
+summary(df[, c("registro", "hospital", "edad", "genero", "procedencia")])
+```
+# 4. Inspect the cleaned dataset
+```{r, echo=FALSE}
+# Delete poorly introduced patients safely
+
+df[] <- lapply(df, function(x) {
+  if (is.factor(x)) droplevels(x) else x
+})
+table(df$genero, useNA = "always")
+summary(df)
+
 ```
 
 ```{r, echo=FALSE}
-df$fecha_ingreso_uci_date <- as.Date(
-  as.character(df$fecha_ingreso_uci),
-  format = "%d/%m/%Y"
-)
+
+```
+
+```{r, echo=FALSE}
+
 ```
 
 #SUMMARY
