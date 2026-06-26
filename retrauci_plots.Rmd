@@ -15,8 +15,8 @@ library(lubridate)
 
 ```{r, echo=FALSE}
 df <- read.csv2(
-  #"C:/Users/user/OneDrive - udl.cat/Desktop/practiques estiu 26/retrauci.csv",
-  "C:/Users/Usuari/Desktop/RETRAUCI_rm/RETRAUCI_REPORT/retrauci.csv",
+  "C:/Users/user/OneDrive - udl.cat/Desktop/practiques estiu 26/retrauci.csv",
+  #"C:/Users/Usuari/Desktop/RETRAUCI_rm/RETRAUCI_REPORT/retrauci.csv",
   stringsAsFactors = TRUE
 )
 
@@ -118,8 +118,8 @@ summary(df[, c("registro", "hospital", "edad", "genero", "procedencia")])
 df[] <- lapply(df, function(x) {
   if (is.factor(x)) droplevels(x) else x
 })
-table(df$genero, useNA = "always")
-summary(df)
+
+#summary(df)
 
 ```
 
@@ -141,9 +141,9 @@ summary(df)
 #GENERAL DATA
 ```{r, echo=FALSE}
 admissions_year <- df %>%
-  filter(!is.na(fecha_ingreso_uci_date)) %>%
+  filter(!is.na(fecha_ingreso_uci)) %>%
   mutate(
-    year = format(fecha_ingreso_uci_date, "%Y"),
+    year = format(fecha_ingreso_uci, "%Y"),
     mortality = evolucion_uci %in% c("exitus", "exitus y donacion")
   ) %>%
   group_by(year) %>%
@@ -166,7 +166,21 @@ knitr::kable(
 )
 
 ```
+```{r, echo=FALSE}
+df <- df %>%
+  mutate(
+    fecha_trauma_date = as.Date(fecha_trauma),
+    fecha_ingreso_hospital_date = as.Date(fecha_ingreso_hospital),
+    fecha_ingreso_uci_date = as.Date(fecha_ingreso_uci),
+    fecha_alta_uci_date = as.Date(fecha_alta_uci),
+    fecha_alta_hospital_date = as.Date(fecha_alta_hospital),
 
+    hora_trauma = format(hora_trauma, "%H:%M"),
+    hora_ingreso_hospital = format(hora_ingreso_hospital, "%H:%M"),
+    hora_ingreso_uci = format(hora_ingreso_uci, "%H:%M"),
+    hora_exitus = format(hora_exitus, "%H:%M")
+  )
+```
 
 ```{r, echo=FALSE}
 df <- df %>%
@@ -182,7 +196,7 @@ df <- df %>%
 
     delay_min = ifelse(delay_min < 0, delay_min + 24 * 60, delay_min),
 
-    year = format(fecha_ingreso_uci_date, "%Y")
+    year = format(fecha_ingreso_uci, "%Y")
   )
 
 delay_year <- df %>%
@@ -288,7 +302,7 @@ knitr::kable(mais_year)
 # Asegurar la conversión de la fecha y extracción de períodos
 df <- df %>%
   mutate(
-    fecha_ingreso_uci_date = as.Date(as.character(fecha_ingreso_uci), format = "%d/%m/%Y"),
+    fecha_ingreso_uci_date = as.Date(fecha_ingreso_uci),
     year = format(fecha_ingreso_uci_date, "%Y"),
     month = format(fecha_ingreso_uci_date, "%m")
   )
