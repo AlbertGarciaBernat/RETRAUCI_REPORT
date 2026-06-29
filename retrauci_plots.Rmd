@@ -1167,7 +1167,7 @@ tabla_texto <- tabla_lesiones_region %>%
   filter(orden < 99) %>%
   arrange(orden) %>%
   mutate(
-    y = seq(8.8, 1.2, length.out = n()),
+    y = seq(8.3, 1.0, length.out = n()),
     texto_2015 = paste0(
       region_plot, "\n",
       n_lesiones_2015_2024, " (", round(porcentaje_2015_2024, 1), "%)"
@@ -1186,7 +1186,35 @@ tabla_texto <- tabla_lesiones_region %>%
   )
 
 g_final <- g +
-  coord_fixed(xlim = c(-5, 15), ylim = c(0, 10), expand = FALSE) +
+  coord_fixed(xlim = c(-5, 15), ylim = c(0, 11), expand = FALSE) +
+
+  annotate(
+    "text",
+    x = 5,
+    y = 10.6,
+    label = "Patrón lesional. AIS >=3",
+    size = 6,
+    fontface = "bold"
+  ) +
+
+  annotate(
+    "text",
+    x = -2.5,
+    y = 9.55,
+    label = "2015-2024",
+    size = 5.5,
+    fontface = "bold"
+  ) +
+
+  annotate(
+    "text",
+    x = 12.5,
+    y = 9.55,
+    label = "2025+",
+    size = 5.5,
+    fontface = "bold"
+  ) +
+
   geom_label(
     data = tabla_texto,
     aes(x = -2.5, y = y, label = texto_2015, fill = fill),
@@ -1198,6 +1226,7 @@ g_final <- g +
     fontface = "plain",
     lineheight = 0.9
   ) +
+
   geom_label(
     data = tabla_texto,
     aes(x = 12.5, y = y, label = texto_2025, fill = fill),
@@ -1209,6 +1238,7 @@ g_final <- g +
     fontface = "plain",
     lineheight = 0.9
   ) +
+
   scale_fill_identity()
 
 g_final
