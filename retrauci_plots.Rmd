@@ -11,6 +11,10 @@ library(ggplot2)
 library(tidyr)
 library(scales)
 library(lubridate)
+library(stringr)
+library(knitr)
+library(png)
+library(grid)
 ```
 
 ```{r, echo=FALSE}
@@ -85,6 +89,10 @@ numeric_vars <- c(
   "rscore_ais_cabeza", "rscore_ais_torax",
   "retrascore"
 )
+
+gravedad_vars <- grep("^lesion_\\d+_gravedad$", names(df), value = TRUE)
+
+numeric_vars <- c(numeric_vars, gravedad_vars)
 
 numeric_vars <- intersect(numeric_vars, names(df))
 
@@ -969,5 +977,259 @@ ggplot(df_mecanismo, aes(x = year_num, y = pct, color = mec_clean)) +
   # Forzar que la leyenda tenga 3 columnas para que encaje bien en la base
   guides(color = guide_legend(ncol = 3))
 ```
+
+```{r, echo=FALSE}
+lesiones_long <- df %>%
+  mutate(
+    ano = year(fecha_ingreso_uci),
+    periodo = case_when(
+      ano >= 2015 & ano <= 2024 ~ "2015_2024",
+      ano >= 2025 ~ "2025_mas",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(periodo)) %>%
+  pivot_longer(
+    cols = matches("^lesion_\\d+_(nombre|gravedad)$"),
+    names_to = c("lesion", ".value"),
+    names_pattern = "(lesion_\\d+)_(nombre|gravedad)"
+  ) %>%
+  mutate(
+    nombre = str_trim(as.character(nombre)),
+    gravedad = as.numeric(as.character(gravedad))
+  ) %>%
+  filter(!is.na(nombre), nombre != "")
+
+# Comprobación opcional
+resumen_gravedad <- lesiones_long %>%
+  summarise(
+    total_lesiones = n(),
+    lesiones_gravedad_menor_3 = sum(gravedad < 3, na.rm = TRUE),
+    lesiones_gravedad_3_o_mas = sum(gravedad >= 3, na.rm = TRUE),
+    lesiones_gravedad_NA = sum(is.na(gravedad))
+  )
+
+kable(resumen_gravedad)
+
+tabla_lesiones_region <- lesiones_long %>%
+  filter(!is.na(gravedad), gravedad >= 3) %>%
+  mutate(
+    region = str_trim(str_extract(nombre, "^[^/]+")),
+    region = case_when(
+      region %in% c("Craneo", "Cara", "Cuello") ~ "Cabeza",
+      TRUE ~ region
+    )
+  ) %>%
+  filter(!is.na(region), region != "") %>%
+  count(region, periodo, name = "n_lesiones") %>%
+  group_by(periodo, region) %>%
+  summarise(n_lesiones = sum(n_lesiones), .groups = "drop") %>%
+  group_by(periodo) %>%
+  mutate(
+    porcentaje = 100 * n_lesiones / sum(n_lesiones)
+  ) %>%
+  ungroup() %>%
+  pivot_wider(
+    names_from = periodo,
+    values_from = c(n_lesiones, porcentaje),
+    values_fill = 0
+  ) %>%
+  mutate(
+    total_n = n_lesiones_2015_2024 + n_lesiones_2025_mas
+  ) %>%
+  arrange(desc(total_n)) %>%
+  select(
+    region,
+    n_lesiones_2015_2024,
+    porcentaje_2015_2024,
+    n_lesiones_2025_mas,
+    porcentaje_2025_mas
+  )
+
+kable(
+  tabla_lesiones_region,
+  digits = 2,
+  col.names = c(
+    "Región",
+    "N (2015-2024)", "% (2015-2024)",
+    "N (2025+)", "% (2025+)"
+  )
+)
+```
+
+```{r, echo=FALSE}
+ruta_img <- "C:/Users/user/OneDrive - udl.cat/Desktop/practiques estiu 26/man-icon.png"
+ruta_salida <- "C:/Users/user/OneDrive - udl.cat/Desktop/practiques estiu 26/silueta_con_cajas.png"
+
+img <- readPNG(ruta_img)
+
+g <- ggplot() +
+  annotation_custom(
+    rasterGrob(img, interpolate = TRUE),
+    xmin = 0, xmax = 10,
+    ymin = 0, ymax = 10
+  ) +
+
+  # Cabeza
+  annotate("rect",
+           xmin = 4.5, xmax = 5.5,
+           ymin = 7.25, ymax = 8,
+           colour = "#4472C4", fill = NA, linewidth = 1) +
+
+  # Tórax
+  annotate("rect",
+           xmin = 4.4, xmax = 5.6,
+           ymin = 6, ymax = 7,
+           colour = "#ED7D31", fill = NA, linewidth = 1) +
+
+  # Abdomen
+  annotate("rect",
+           xmin = 4.3, xmax = 5.8,
+           ymin = 5, ymax = 6,
+           colour = "#70AD47", fill = NA, linewidth = 1) +
+
+  # Columna
+  annotate("rect",
+           xmin = 4.8, xmax = 5.2,
+           ymin = 5, ymax = 7.2,
+           colour = "#7030A0", fill = NA, linewidth = 1) +
+
+  # Extremidad superior izquierda
+  annotate("rect",
+           xmin = 3.75, xmax = 4.5,
+           ymin = 5, ymax = 7.2,
+           colour = "#FFC000", fill = NA, linewidth = 1) +
+
+  # Extremidad superior derecha
+  annotate("rect",
+           xmin = 5.5, xmax = 6.25,
+           ymin = 5, ymax = 7.2,
+           colour = "#FFC000", fill = NA, linewidth = 1) +
+
+  # Extremidad inferior izquierda
+  annotate("rect",
+           xmin = 4.4, xmax = 4.9,
+           ymin = 2.5, ymax = 5,
+           colour = "#A5A5A5", fill = NA, linewidth = 1) +
+
+  # Extremidad inferior derecha
+  annotate("rect",
+           xmin = 5.1, xmax = 5.6,
+           ymin = 2.5, ymax = 5,
+           colour = "#A5A5A5", fill = NA, linewidth = 1) +
+
+  coord_fixed(xlim = c(0, 10), ylim = c(0, 10), expand = FALSE) +
+  theme_void()
+
+g
+```
+
+```{r, echo=FALSE}
+ggsave(
+  filename = ruta_salida,
+  plot = g,
+  width = 8,
+  height = 10,
+  dpi = 300
+)
+```
+
+```{r, echo=FALSE}
+tabla_texto <- tabla_lesiones_region %>%
+  mutate(
+    region_plot = case_when(
+      region %in% c("Extemidades Inferiores", "Extremidades Inferiores") ~ "Extremidad inferior",
+      region == "Extremidades Superiores" ~ "Extremidad superior",
+      region == "Columna Vertebral" ~ "Columna",
+      region == "Torax" ~ "Tórax",
+      TRUE ~ region
+    )
+  ) %>%
+  group_by(region_plot) %>%
+  summarise(
+    n_lesiones_2015_2024 = sum(n_lesiones_2015_2024, na.rm = TRUE),
+    porcentaje_2015_2024 = sum(porcentaje_2015_2024, na.rm = TRUE),
+    n_lesiones_2025_mas = sum(n_lesiones_2025_mas, na.rm = TRUE),
+    porcentaje_2025_mas = sum(porcentaje_2025_mas, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    orden = case_when(
+      region_plot == "Cabeza" ~ 1,
+      region_plot == "Tórax" ~ 2,
+      region_plot == "Abdomen" ~ 3,
+      region_plot == "Columna" ~ 4,
+      region_plot == "Extremidad superior" ~ 5,
+      region_plot == "Extremidad inferior" ~ 6,
+      TRUE ~ 99
+    )
+  ) %>%
+  filter(orden < 99) %>%
+  arrange(orden) %>%
+  mutate(
+    y = seq(8.8, 1.2, length.out = n()),
+    texto_2015 = paste0(
+      region_plot, "\n",
+      n_lesiones_2015_2024, " (", round(porcentaje_2015_2024, 1), "%)"
+    ),
+    texto_2025 = paste0(
+      region_plot, "\n",
+      n_lesiones_2025_mas, " (", round(porcentaje_2025_mas, 1), "%)"
+    ),
+    fill = case_when(
+      region_plot == "Cabeza" ~ "#DDEBF7",
+      region_plot == "Tórax" ~ "#FCE4D6",
+      region_plot == "Abdomen" ~ "#E2F0D9",
+      region_plot == "Columna" ~ "#EDE7F6",
+      TRUE ~ "#FFF2CC"
+    )
+  )
+
+g_final <- g +
+  coord_fixed(xlim = c(-5, 15), ylim = c(0, 10), expand = FALSE) +
+  geom_label(
+    data = tabla_texto,
+    aes(x = -2.5, y = y, label = texto_2015, fill = fill),
+    colour = "black",
+    label.size = 0,
+    label.padding = unit(0.35, "lines"),
+    label.r = unit(0.15, "lines"),
+    size = 4.2,
+    fontface = "plain",
+    lineheight = 0.9
+  ) +
+  geom_label(
+    data = tabla_texto,
+    aes(x = 12.5, y = y, label = texto_2025, fill = fill),
+    colour = "black",
+    label.size = 0,
+    label.padding = unit(0.35, "lines"),
+    label.r = unit(0.15, "lines"),
+    size = 4.2,
+    fontface = "plain",
+    lineheight = 0.9
+  ) +
+  scale_fill_identity()
+
+g_final
+```
+
+```{r, echo=FALSE}
+
+```
+
+```{r, echo=FALSE}
+
+```
+
+```{r, echo=FALSE}
+
+```
+
+```{r, echo=FALSE}
+
+```
+
+
 
 
