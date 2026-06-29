@@ -19,8 +19,8 @@ library(grid)
 
 ```{r, echo=FALSE}
 df <- read.csv2(
-  "C:/Users/user/OneDrive - udl.cat/Desktop/practiques estiu 26/retrauci.csv",
-  #"C:/Users/Usuari/Desktop/RETRAUCI_rm/RETRAUCI_REPORT/retrauci.csv",
+  #"C:/Users/user/OneDrive - udl.cat/Desktop/practiques estiu 26/retrauci.csv",
+  "C:/Users/Usuari/Desktop/RETRAUCI_rm/RETRAUCI_REPORT/retrauci.csv",
   stringsAsFactors = TRUE
 )
 
@@ -1244,22 +1244,484 @@ g_final <- g +
 g_final
 ```
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
 
+# 1. Preparar datos base con flags de periodo
+df_tabla <- df %>%
+  mutate(
+    is_25 = (!is.na(year) & year == "2025"),
+    is_retra = (!is.na(year) & year != "2025"),
+    
+    # Limpieza de categorías
+    procedencia = ifelse(is.na(procedencia) | procedencia == "", "Desconocido", as.character(procedencia)),
+    intencionalidad = ifelse(is.na(intencionalidad) | intencionalidad == "", "Desconocido", as.character(intencionalidad)),
+    mecanismo = ifelse(is.na(mecanismo) | mecanismo == "", "Desconocido", as.character(mecanismo)),
+    
+    edad_num = suppressWarnings(as.numeric(as.character(edad))),
+    edad_cat = case_when(
+      is.na(edad_num) ~ "Desconocido",
+      edad_num <= 49 ~ "- \U2264 49 años",
+      edad_num >= 50 & edad_num <= 65 ~ "- 50-65 años",
+      edad_num >= 66 & edad_num <= 75 ~ "- 66-75 años",
+      edad_num > 75 ~ "- > 75 años"
+    )
+  )
+
+# 2. Función maestra de conteo con DENOMINADORES FIJOS
+# tot_retra y tot_25 son el número total de pacientes de cada periodo
+tot_retra <- sum(df_tabla$is_retra, na.rm = TRUE)
+tot_25 <- sum(df_tabla$is_25, na.rm = TRUE)
+
+generar_filas_fix <- function(data, variable, ordenar_desc = FALSE) {
+  
+  # Contamos por categoría dentro de cada grupo
+  sum_retra <- data %>% filter(is_retra) %>% count(!!sym(variable), name = "n_retra")
+  sum_25 <- data %>% filter(is_25) %>% count(!!sym(variable), name = "n_25")
+  
+  merged <- full_join(sum_retra, sum_25, by = variable) %>%
+    replace_na(list(n_retra = 0, n_25 = 0))
+  
+  if (ordenar_desc) {
+    merged <- merged %>% arrange(!!sym(variable) == "Desconocido", desc(n_retra))
+  }
+  
+  merged %>%
+    mutate(
+      # % calculado sobre el total de pacientes del grupo (no sobre los que tienen la variable rellena)
+      pct_retra = (n_retra / tot_retra) * 100,
+      pct_25 = (n_25 / tot_25) * 100,
+      RETRAUCI = paste0(n_retra, " (", gsub("\\.", ",", sprintf("%.1f", pct_retra)), "%)"),
+      `2025` = paste0(n_25, " (", gsub("\\.", ",", sprintf("%.1f", pct_25)), "%)"),
+      Variable = as.character(!!sym(variable))
+    ) %>%
+    select(Variable, RETRAUCI, `2025`)
+}
+
+# 3. Construir secciones
+row_pacientes <- tibble(Variable = "**Nº Pacientes**", RETRAUCI = as.character(tot_retra), `2025` = as.character(tot_25))
+
+# Sexo (Cálculo directo con denominadores fijos)
+n_muj_retra <- sum(grepl("(?i)femenino|mujer|m", df_tabla$genero) & df_tabla$is_retra, na.rm = TRUE)
+n_hom_retra <- sum(grepl("(?i)masculino|hombre|h|varón|varon", df_tabla$genero) & df_tabla$is_retra, na.rm = TRUE)
+n_muj_25 <- sum(grepl("(?i)femenino|mujer|m", df_tabla$genero) & df_tabla$is_25, na.rm = TRUE)
+n_hom_25 <- sum(grepl("(?i)masculino|hombre|h|varón|varon", df_tabla$genero) & df_tabla$is_25, na.rm = TRUE)
+
+row_sexo <- tibble(
+  Variable = "**Sexo (Mujeres/Hombres)**",
+  RETRAUCI = paste0("(", n_muj_retra, "/", n_hom_retra, ")"),
+  `2025` = paste0("(", n_muj_25, "/", n_hom_25, ")")
+)
+
+# 4. Ensamblar final
+tabla_final <- bind_rows(
+  row_pacientes,
+  tibble(Variable = "**Edad**", RETRAUCI = "", `2025` = ""), generar_filas_fix(df_tabla, "edad_cat"),
+  row_sexo,
+  tibble(Variable = "**Procedencia**", RETRAUCI = "", `2025` = ""), generar_filas_fix(df_tabla, "procedencia", TRUE),
+  tibble(Variable = "**Intencionalidad**", RETRAUCI = "", `2025` = ""), generar_filas_fix(df_tabla, "intencionalidad", TRUE),
+  tibble(Variable = "**Mecanismos**", RETRAUCI = "", `2025` = ""), generar_filas_fix(df_tabla, "mecanismo", TRUE)
+)
+
+knitr::kable(tabla_final, col.names = c("", "RETRAUCI", "2025"), align = c("l", "c", "c"))
+```
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
+
+# 1. Preparar datos con filtros mutuamente excluyentes para las columnas
+df_t1 <- df %>%
+  mutate(
+    # --- Filtros de Columnas (Histórico vs 2025) ---
+    is_25 = (!is.na(year) & year == "2025"),
+    is_retra = (!is.na(year) & year != "2025"),
+
+    # --- Tipo de trauma ---
+    is_contuso = grepl("(?i)contuso|cerrado", tipo_trauma),
+    is_penetrante = grepl("(?i)penetrante|abierto", tipo_trauma),
+
+    # --- Fármacos (independientes) ---
+    is_anti = grepl("(?i)1|si|s|true|positivo", antiagregado) & !is.na(antiagregado) & antiagregado != "",
+    is_dicu = grepl("(?i)1|si|s|true|positivo", dicumarinicos) & !is.na(dicumarinicos) & dicumarinicos != "",
+    is_acod = grepl("(?i)1|si|s|true|positivo", acod) & !is.na(acod) & acod != "",
+    
+    # "No constan": Verdadero SOLO si NINGUNO de los tres anteriores está marcado
+    is_none_farm = !(is_anti | is_dicu | is_acod),
+
+    # --- Atención prehospitalaria ---
+    aten_pre = case_when(
+      grepl("(?i)uvi|medicalizada|samu", atencion_prehospitalaria) & !grepl("(?i)no", atencion_prehospitalaria) ~ "- UVI móvil",
+      grepl("(?i)helic|aereo", atencion_prehospitalaria) ~ "- Helicóptero",
+      grepl("(?i)no medicalizada|basico|svb", atencion_prehospitalaria) ~ "- No medicalizada",
+      grepl("(?i)sin atencion|propios", atencion_prehospitalaria) ~ "- Sin atención prehospitalaria",
+      grepl("(?i)enfermer|sve", atencion_prehospitalaria) ~ "- Soporte Vital Enfermería",
+      TRUE ~ "- Desconocido"
+    )
+  )
+
+# 2. Función auxiliar adaptada para los nuevos denominadores
+make_row <- function(var_name, count_retra, den_retra, count_25, den_25) {
+  pct_retra <- ifelse(den_retra > 0, (count_retra / den_retra) * 100, 0)
+  pct_25 <- ifelse(den_25 > 0, (count_25 / den_25) * 100, 0)
+  
+  val_retra <- paste0(count_retra, " (", gsub("\\.", ",", sprintf("%.1f", pct_retra)), "%)")
+  val_25 <- paste0(count_25, " (", gsub("\\.", ",", sprintf("%.1f", pct_25)), "%)")
+  
+  tibble(Variable = var_name, RETRAUCI = val_retra, `2025` = val_25)
+}
+
+# 3. Calcular denominadores globales
+tot_retra <- sum(df_t1$is_retra, na.rm = TRUE)
+tot_25 <- sum(df_t1$is_25, na.rm = TRUE)
+
+row_pacientes <- tibble(Variable = "**Nº Pacientes**", RETRAUCI = as.character(tot_retra), `2025` = as.character(tot_25))
+
+# -- Tipo de trauma (Denominador excluye vacíos) --
+den_trauma_retra <- sum((df_t1$is_contuso | df_t1$is_penetrante) & df_t1$is_retra, na.rm = TRUE)
+den_trauma_25 <- sum((df_t1$is_contuso | df_t1$is_penetrante) & df_t1$is_25, na.rm = TRUE)
+
+head_trauma <- tibble(Variable = "**Tipo de trauma**", RETRAUCI = "", `2025` = "")
+r_contuso <- make_row("- Contuso", sum(df_t1$is_contuso & df_t1$is_retra, na.rm=T), den_trauma_retra, sum(df_t1$is_contuso & df_t1$is_25, na.rm=T), den_trauma_25)
+r_pene <- make_row("- Penetrante", sum(df_t1$is_penetrante & df_t1$is_retra, na.rm=T), den_trauma_retra, sum(df_t1$is_penetrante & df_t1$is_25, na.rm=T), den_trauma_25)
+
+# -- Fármacos (Denominador: Total de pacientes) --
+head_farmacos <- tibble(Variable = "**Consumo de antiagregantes o anticoagulantes**", RETRAUCI = "", `2025` = "")
+r_none <- make_row("- No constan", sum(df_t1$is_none_farm & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$is_none_farm & df_t1$is_25, na.rm=T), tot_25)
+r_anti <- make_row("- Antiagregados", sum(df_t1$is_anti & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$is_anti & df_t1$is_25, na.rm=T), tot_25)
+r_dicu <- make_row("- Dicumarínicos", sum(df_t1$is_dicu & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$is_dicu & df_t1$is_25, na.rm=T), tot_25)
+r_acod <- make_row("- ACOD", sum(df_t1$is_acod & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$is_acod & df_t1$is_25, na.rm=T), tot_25)
+
+# -- Atención prehospitalaria (Denominador: Total de pacientes) --
+head_prehosp <- tibble(Variable = "**Atención prehospitalaria**", RETRAUCI = "", `2025` = "")
+cats_pre <- c("- UVI móvil", "- Helicóptero", "- No medicalizada", "- Sin atención prehospitalaria", "- Soporte Vital Enfermería", "- Desconocido")
+
+rows_prehosp <- bind_rows(lapply(cats_pre, function(c) {
+  make_row(c, sum(df_t1$aten_pre == c & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$aten_pre == c & df_t1$is_25, na.rm=T), tot_25)
+}))
+
+# 4. Ensamblar tabla final
+tabla1_final <- bind_rows(
+  row_pacientes,
+  head_trauma, r_contuso, r_pene,
+  head_farmacos, r_none, r_anti, r_dicu, r_acod,
+  head_prehosp, rows_prehosp
+)
+
+# 5. Renderizar
+knitr::kable(tabla1_final, col.names = c("", "RETRAUCI", "2025"), align = c("l", "l", "l"))
 ```
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
 
+# 1. Preparar datos garantizando denominadores totales y capturando números
+df_t2 <- df %>%
+  mutate(
+    # Garantizamos que TODOS los pacientes caigan en uno de los dos denominadores
+    # Si no es de 2025 (o su fecha está en blanco), va al histórico (RETRAUCI)
+    is_25 = (!is.na(year) & year == "2025"),
+    is_retra = !is_25, 
+    
+    tce_str = as.character(tce),
+    
+    # Búsqueda ampliada: ahora captura tanto texto (ej: "Tipo III") como números directos (ej: "3")
+    tce_cl = case_when(
+      grepl("(?i)difusa.*iii|tipo 3|tipo iii", tce_str) | tce_str == "3" ~ "- Les Difusa Tipo III (sweling difuso): no lesión masa y cisternas comprimidas o ausentes",
+      grepl("(?i)difusa.*iv|tipo 4|tipo iv", tce_str) | tce_str == "4" ~ "- Les Difusa Tipo IV (sweling hemisférico): no lesión, desviación LM > 5mm",
+      grepl("(?i)difusa.*ii|tipo 2|tipo ii", tce_str) | tce_str == "2" ~ "- Les Difusa Tipo II: sin lesión masa >25 cc, con cisternas presentes, línea media (LM) < 6 mm",
+      grepl("(?i)difusa.*i\\b|tipo 1|tipo i\\b", tce_str) | tce_str == "1" ~ "- Les Difusa Tipo I: sin lesión intracraneal visible",
+      
+      # IMPORTANTE: "no evacuada" va primero para que la palabra "evacuada" no lo pise por error
+      grepl("(?i)no evacuada|tipo 6|tipo vi", tce_str) | tce_str == "6" ~ "- Les Masa no Evacuada (Tipo VI): lesión masa > 25 cc no operada",
+      grepl("(?i)evacuada|tipo 5|tipo v\\b", tce_str) | tce_str == "5" ~ "- Les Masa Evacuada (Tipo V): cualquier lesión evacuada quirúrgicamente",
+      
+      # Si está vacío, dice "No", "0", etc., se asume sin TCE
+      TRUE ~ "- No TCE"
+    )
+  )
+
+# 2. Función auxiliar matemática estricta
+make_row_tce <- function(var_name, count_retra, den_retra, count_25, den_25) {
+  pct_retra <- ifelse(den_retra > 0, (count_retra / den_retra) * 100, 0)
+  pct_25 <- ifelse(den_25 > 0, (count_25 / den_25) * 100, 0)
+  
+  val_retra <- paste0(count_retra, " (", gsub("\\.", ",", sprintf("%.1f", pct_retra)), "%)")
+  val_25 <- paste0(count_25, " (", gsub("\\.", ",", sprintf("%.1f", pct_25)), "%)")
+  
+  tibble(Variable = var_name, RETRAUCI = val_retra, `2025` = val_25)
+}
+
+# 3. Calcular denominadores REALES de la base de datos completa
+tot_retra <- sum(df_t2$is_retra, na.rm = TRUE)
+tot_25 <- sum(df_t2$is_25, na.rm = TRUE)
+
+# 4. Iterar sobre las categorías manteniendo el orden exacto de la imagen
+cats_tce <- c(
+  "- No TCE", 
+  "- Les Difusa Tipo I: sin lesión intracraneal visible", 
+  "- Les Difusa Tipo II: sin lesión masa >25 cc, con cisternas presentes, línea media (LM) < 6 mm",
+  "- Les Difusa Tipo III (sweling difuso): no lesión masa y cisternas comprimidas o ausentes",
+  "- Les Difusa Tipo IV (sweling hemisférico): no lesión, desviación LM > 5mm",
+  "- Les Masa Evacuada (Tipo V): cualquier lesión evacuada quirúrgicamente",
+  "- Les Masa no Evacuada (Tipo VI): lesión masa > 25 cc no operada"
+)
+
+rows_tce <- bind_rows(lapply(cats_tce, function(cat) {
+  # Filtramos usando un simple & lógico para mayor seguridad
+  count_r <- sum(df_t2$tce_cl == cat & df_t2$is_retra, na.rm = TRUE)
+  count_2 <- sum(df_t2$tce_cl == cat & df_t2$is_25, na.rm = TRUE)
+  make_row_tce(cat, count_r, tot_retra, count_2, tot_25)
+}))
+
+head_tce <- tibble(Variable = "**TCE**", RETRAUCI = "", `2025` = "")
+tabla_tce_final <- bind_rows(head_tce, rows_tce)
+
+# 5. Renderizar la tabla final
+knitr::kable(
+  tabla_tce_final, 
+  caption = "Codificación de lesiones", 
+  col.names = c("", "RETRAUCI", "2025"), 
+  align = c("l", "l", "l")
+)
 ```
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
 
+# 1. Preparar datos garantizando la separación correcta de periodos
+df_t3 <- df %>%
+  mutate(
+    # Filtros estrictos de periodo (si el año es NA, va al histórico por defecto)
+    is_25 = (!is.na(year) & year == "2025"),
+    is_retra = !is_25,
+    
+    # Asegurar que los scores son numéricos
+    iss_num = suppressWarnings(as.numeric(as.character(iss))),
+    rts_num = suppressWarnings(as.numeric(as.character(rts))),
+    ps_num = suppressWarnings(as.numeric(as.character(ps))), # TRISS(PS)
+    retra_num = suppressWarnings(as.numeric(as.character(retrascore))),
+    
+    # Categorizar ISS
+    iss_cat = case_when(
+      iss_num <= 15 ~ "- ISS \U2264 15",
+      iss_num >= 16 & iss_num <= 24 ~ "- ISS 16-24",
+      iss_num >= 25 ~ "- ISS \U2265 25",
+      TRUE ~ NA_character_
+    )
+  )
+
+# 2. Función para las filas del ISS (Calcula % sobre el total de casos VÁLIDOS)
+make_row_iss <- function(var_name, count_retra, den_retra, count_25, den_25) {
+  pct_retra <- ifelse(den_retra > 0, (count_retra / den_retra) * 100, 0)
+  pct_25 <- ifelse(den_25 > 0, (count_25 / den_25) * 100, 0)
+  
+  # Formato sin espacio antes del paréntesis: 6146(35,9%)
+  val_retra <- paste0(count_retra, "(", gsub("\\.", ",", sprintf("%.1f", pct_retra)), "%)")
+  val_25 <- paste0(count_25, "(", gsub("\\.", ",", sprintf("%.1f", pct_25)), "%)")
+  
+  tibble(Variable = var_name, RETRAUCI = val_retra, `2025` = val_25)
+}
+
+# 3. Función para Media(DE) y Mediana(IQR)
+calc_stats_combined <- function(data, variable, is_25_flag) {
+  # Extraer vector filtrado por el periodo correspondiente
+  if (is_25_flag) {
+    x <- data[[variable]][data$is_25]
+  } else {
+    x <- data[[variable]][data$is_retra]
+  }
+  
+  # Quitar NAs para los cálculos matemáticos
+  x <- x[!is.na(x)]
+  
+  if (length(x) == 0) return("")
+  
+  m_mean <- mean(x)
+  s_sd <- sd(x)
+  med <- median(x)
+  q25 <- quantile(x, 0.25)
+  q75 <- quantile(x, 0.75)
+  
+  # Eliminar decimales en IQR si son enteros (como en el 10-12 de tu imagen), si no, 1 decimal
+  format_num <- function(num) { gsub("\\.", ",", sprintf("%.1f", num)) }
+  format_iqr <- function(num) { ifelse(num %% 1 == 0, as.character(num), format_num(num)) }
+  
+  line1 <- paste0(format_num(m_mean), "(DE ", format_num(s_sd), ")")
+  line2 <- paste0(format_iqr(med), "(IQR ", format_iqr(q25), "-", format_iqr(q75), ")")
+  
+  # Salto de línea HTML para la tabla
+  paste0(line1, " <br> ", line2)
+}
+
+# 4. Calcular Denominadores
+tot_retra <- sum(df_t3$is_retra, na.rm = TRUE)
+tot_25 <- sum(df_t3$is_25, na.rm = TRUE)
+
+den_iss_retra <- sum(!is.na(df_t3$iss_cat) & df_t3$is_retra, na.rm = TRUE)
+den_iss_25 <- sum(!is.na(df_t3$iss_cat) & df_t3$is_25, na.rm = TRUE)
+
+# 5. Construir las Filas
+row_pacientes_scores <- tibble(Variable = "", RETRAUCI = as.character(tot_retra), `2025` = as.character(tot_25))
+
+head_iss <- tibble(Variable = "**ISS**", RETRAUCI = "", `2025` = "")
+r_iss1 <- make_row_iss("- ISS \U2264 15", sum(df_t3$iss_cat == "- ISS \U2264 15" & df_t3$is_retra, na.rm=T), den_iss_retra, sum(df_t3$iss_cat == "- ISS \U2264 15" & df_t3$is_25, na.rm=T), den_iss_25)
+r_iss2 <- make_row_iss("- ISS 16-24", sum(df_t3$iss_cat == "- ISS 16-24" & df_t3$is_retra, na.rm=T), den_iss_retra, sum(df_t3$iss_cat == "- ISS 16-24" & df_t3$is_25, na.rm=T), den_iss_25)
+r_iss3 <- make_row_iss("- ISS \U2265 25", sum(df_t3$iss_cat == "- ISS \U2265 25" & df_t3$is_retra, na.rm=T), den_iss_retra, sum(df_t3$iss_cat == "- ISS \U2265 25" & df_t3$is_25, na.rm=T), den_iss_25)
+
+row_rts <- tibble(
+  Variable = "**RTS**", 
+  RETRAUCI = calc_stats_combined(df_t3, "rts_num", FALSE),
+  `2025` = calc_stats_combined(df_t3, "rts_num", TRUE)
+)
+
+row_triss <- tibble(
+  Variable = "**TRISS (PS)**", 
+  RETRAUCI = calc_stats_combined(df_t3, "ps_num", FALSE),
+  `2025` = calc_stats_combined(df_t3, "ps_num", TRUE)
+)
+
+row_retrascore <- tibble(
+  Variable = "**RETRASCORE**", 
+  RETRAUCI = calc_stats_combined(df_t3, "retra_num", FALSE),
+  `2025` = calc_stats_combined(df_t3, "retra_num", TRUE)
+)
+
+# 6. Ensamblar tabla final
+tabla_gravedad_final <- bind_rows(
+  row_pacientes_scores,
+  head_iss, r_iss1, r_iss2, r_iss3,
+  row_rts,
+  row_triss,
+  row_retrascore
+)
+
+# 7. Renderizar (escape = FALSE para leer los <br> de salto de línea)
+knitr::kable(
+  tabla_gravedad_final, 
+  caption = "Índices de gravedad", 
+  col.names = c("", "RETRAUCI", "2025"), 
+  align = c("l", "l", "l"), 
+  escape = FALSE
+)
 ```
 
-```{r, echo=FALSE}
 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Definición de periodos (excluyendo 2025 para el histórico)
+is_25 <- (!is.na(df$year) & df$year == "2025")
+is_retra <- (!is.na(df$year) & df$year != "2025")
+
+# Función para especialidades quirúrgicas (1, 2, 3)
+generar_seccion_qx <- function(nombre_fila, var_col) {
+  # Denominadores: Pacientes que han pasado por esa especialidad específica
+  tot_r <- sum(df[[var_col]] %in% c(1,2,3) & is_retra, na.rm = TRUE)
+  tot_2 <- sum(df[[var_col]] %in% c(1,2,3) & is_25, na.rm = TRUE)
+  
+  # Fila cabecera
+  cabecera <- tibble(V = paste0("**", nombre_fila, "**"), R = as.character(tot_r), Y = as.character(tot_2))
+  
+  # Filas de categorías 1, 2, 3
+  filas <- lapply(c(1, 2, 3), function(cat) {
+    c_r <- sum(df[[var_col]] == cat & is_retra, na.rm = TRUE)
+    c_2 <- sum(df[[var_col]] == cat & is_25, na.rm = TRUE)
+    
+    pct_r <- ifelse(tot_r > 0, (c_r/tot_r)*100, 0)
+    pct_2 <- ifelse(tot_2 > 0, (c_2/tot_2)*100, 0)
+    
+    tibble(V = paste0("  ", cat), 
+           R = paste0(c_r, " (", gsub("\\.", ",", sprintf("%.1f", pct_r)), "%)"),
+           Y = paste0(c_2, " (", gsub("\\.", ",", sprintf("%.1f", pct_2)), "%)"))
+  })
+  
+  bind_rows(cabecera, bind_rows(filas))
+}
+
+# Construcción de la tabla completa
+tabla_recursos_final <- bind_rows(
+  tibble(V = "**Cirugías urgentes (primeras 24h)**", R = as.character(sum(is_retra)), Y = as.character(sum(is_25))),
+  
+  generar_seccion_qx("Neurocirugía", "qx_neuro"),
+  generar_seccion_qx("Maxilofacial", "qx_maxilo"),
+  generar_seccion_qx("Cardiotorácica", "qx_cardiotoracica"),
+  generar_seccion_qx("Cirugía abdominal", "qx_abdominal"),
+  generar_seccion_qx("Cirugía ortopédica", "qx_trauma"),
+  generar_seccion_qx("Otras cirugías", "qx_otras")
+)
+
+# Renderizado
+knitr::kable(tabla_recursos_final, col.names = c("", "RETRAUCI", "2025"), align = "lll")
 ```
 
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Definición de periodos (excluyendo 2025 para RETRAUCI)
+is_25 <- (!is.na(df$year) & df$year == "2025")
+is_retra <- (!is.na(df$year) & df$year != "2025")
 
+# 1. Función para variables categóricas (ej: Transfusión, Ventilación, Traqueotomía)
+calc_cat <- function(var_col, cat_val, label) {
+  # Filtramos por valor (usamos 0/1, Si/No, etc. según tus datos)
+  c_r <- sum(df[[var_col]] == cat_val & is_retra, na.rm = TRUE)
+  c_2 <- sum(df[[var_col]] == cat_val & is_25, na.rm = TRUE)
+  
+  pct_r <- (c_r / sum(is_retra)) * 100
+  pct_2 <- (c_2 / sum(is_25)) * 100
+  
+  tibble(V = paste0("  ", label), 
+         R = paste0(c_r, " (", gsub("\\.", ",", sprintf("%.1f", pct_r)), "%)"),
+         Y = paste0(c_2, " (", gsub("\\.", ",", sprintf("%.1f", pct_2)), "%)"))
+}
 
+# 2. Función para variables continuas (ej: Días de VM)
+calc_cont <- function(var_col) {
+  x_r <- as.numeric(df[[var_col]][is_retra]) %>% na.omit()
+  x_2 <- as.numeric(df[[var_col]][is_25]) %>% na.omit()
+  
+  fmt <- function(v) gsub("\\.", ",", sprintf("%.1f", v))
+  
+  l1 <- paste0(fmt(mean(x_r)), "(DE ", fmt(sd(x_r)), ")")
+  l2 <- paste0(fmt(median(x_r)), "(IQR ", fmt(quantile(x_r, 0.25)), "-", fmt(quantile(x_r, 0.75)), ")")
+  
+  l1_2 <- paste0(fmt(mean(x_2)), "(DE ", fmt(sd(x_2)), ")")
+  l2_2 <- paste0(fmt(median(x_2)), "(IQR ", fmt(quantile(x_2, 0.25)), "-", fmt(quantile(x_2, 0.75)), ")")
+  
+  tibble(V = paste0("  ", "Media/Mediana"), R = paste0(l1, " <br> ", l2), Y = paste0(l1_2, " <br> ", l2_2))
+}
 
+# 3. Ensamblado de toda la tabla
+tabla_recursos_full <- bind_rows(
+  # Transfusión
+  tibble(V = "**Transfusión de hemoderivados**", R = "", Y = ""),
+  calc_cat("hematies_concentrado", 0, "No"),
+  calc_cat("hematies_concentrado", 1, "Si"),
+  
+  # Ventilación mecánica
+  tibble(V = "**Ventilación mecánica**", R = "", Y = ""),
+  calc_cat("vmec_dico", 0, "No"),
+  calc_cat("vmec_dico", 1, "Si"),
+  tibble(V = "**Días de VM (días)**", R = "", Y = ""),
+  calc_cont("vmec_dias"),
+  
+  # Traqueotomía
+  tibble(V = "**TRAQUEOTOMÍA**", R = "", Y = ""),
+  calc_cat("traqueotomia", 0, "No"),
+  calc_cat("traqueotomia", 1, "Si"),
+  
+  # Arteriografía
+  tibble(V = "**Arteriografía**", R = "", Y = ""),
+  calc_cat("arteriografia", 0, "No"),
+  calc_cat("arteriografia", 1, "Sí diagnóstica"),
+  calc_cat("arteriografia", 2, "Sí Terapéutica"),
+  
+  # Terapia renal
+  tibble(V = "**Terapia renal (TRRC)**", R = "", Y = ""),
+  calc_cat("terapia_renal", 0, "No"),
+  calc_cat("terapia_renal", 1, "Si")
+)
+
+# Renderizado final
+knitr::kable(tabla_recursos_full, col.names = c("", "RETRAUCI", "2025"), align = "lll", escape = FALSE)
+```
