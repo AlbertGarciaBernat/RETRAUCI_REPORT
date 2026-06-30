@@ -1174,7 +1174,7 @@ g_final <- g +
 g_final
 ```
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE}
 df_tabla <- df %>%
   mutate(
     is_25 = (!is.na(year) & year == "2025"),
@@ -1246,7 +1246,7 @@ tabla_final <- bind_rows(
 
 knitr::kable(tabla_final, col.names = c("", "RETRAUCI", "2025"), align = c("l", "c", "c"))
 ```
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE}
 df_t1 <- df %>%
   mutate(
     is_25 = (!is.na(year) & year == "2025"),
@@ -1316,7 +1316,7 @@ tabla1_final <- bind_rows(
 knitr::kable(tabla1_final, col.names = c("", "RETRAUCI", "2025"), align = c("l", "l", "l"))
 ```
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE}
 df_t2 <- df %>%
   mutate(
     is_25 = (!is.na(year) & year == "2025"),
@@ -1377,7 +1377,7 @@ knitr::kable(
 )
 ```
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE}
 df_t3 <- df %>%
   mutate(
     is_25 = (!is.na(year) & year == "2025"),
@@ -1482,7 +1482,7 @@ knitr::kable(
 
 
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE}
 is_25 <- (!is.na(df$year) & df$year == "2025")
 is_retra <- (!is.na(df$year) & df$year != "2025")
 
@@ -1521,73 +1521,274 @@ tabla_recursos_final <- bind_rows(
 knitr::kable(tabla_recursos_final, col.names = c("", "RETRAUCI", "2025"), align = "lll")
 ```
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
-#NO ESTÁ BIEN
-# Definición de periodos (excluyendo 2025 para RETRAUCI)
+```{r, echo=FALSE}
 is_25 <- (!is.na(df$year) & df$year == "2025")
 is_retra <- (!is.na(df$year) & df$year != "2025")
 
-# 1. Función para variables categóricas (ej: Transfusión, Ventilación, Traqueotomía)
-calc_cat <- function(var_col, cat_val, label) {
-  # Filtramos por valor (usamos 0/1, Si/No, etc. según tus datos)
-  c_r <- sum(df[[var_col]] == cat_val & is_retra, na.rm = TRUE)
-  c_2 <- sum(df[[var_col]] == cat_val & is_25, na.rm = TRUE)
-  
-  pct_r <- (c_r / sum(is_retra)) * 100
-  pct_2 <- (c_2 / sum(is_25)) * 100
-  
-  tibble(V = paste0("  ", label), 
-         R = paste0(c_r, " (", gsub("\\.", ",", sprintf("%.1f", pct_r)), "%)"),
-         Y = paste0(c_2, " (", gsub("\\.", ",", sprintf("%.1f", pct_2)), "%)"))
+df$transf_dico <- ifelse(is.na(df$hematies_concentrado) | df$hematies_concentrado == 0, "no", "si")
+
+df$traqueo_dico <- ifelse(df$traqueotomia %in% c("percutanea", "quirurgica"), "si", "no")
+
+fmt_pct <- function(p) {
+  val <- sprintf("%.1f", p)
+  val <- gsub("\\.", ",", val)
+  val <- sub(",0$", "", val) 
+  return(val)
 }
 
-# 2. Función para variables continuas (ej: Días de VM)
-calc_cont <- function(var_col) {
-  x_r <- as.numeric(df[[var_col]][is_retra]) %>% na.omit()
-  x_2 <- as.numeric(df[[var_col]][is_25]) %>% na.omit()
+calc_cat <- function(var_col, cat_val, label) {
+  col_data <- as.character(df[[var_col]])
+  cat_val_char <- as.character(cat_val)
+  
+  tot_r <- sum(!is.na(col_data) & col_data != "" & is_retra)
+  tot_2 <- sum(!is.na(col_data) & col_data != "" & is_25)
+  
+  c_r <- sum(col_data == cat_val_char & is_retra, na.rm = TRUE)
+  c_2 <- sum(col_data == cat_val_char & is_25, na.rm = TRUE)
+  
+  pct_r <- if(tot_r > 0) (c_r / tot_r) * 100 else 0
+  pct_2 <- if(tot_2 > 0) (c_2 / tot_2) * 100 else 0
+  
+  str_r <- if(c_r == 0) "0" else paste0(c_r, " (", fmt_pct(pct_r), "%)")
+  str_2 <- if(c_2 == 0) "0" else paste0(c_2, " (", fmt_pct(pct_2), "%)")
+  
+  tibble(V = paste0("•   ", label), R = str_r, Y = str_2)
+}
+
+calc_cont <- function(var_col, label) {
+  x_r <- as.numeric(as.character(df[[var_col]][is_retra])) %>% na.omit()
+  x_2 <- as.numeric(as.character(df[[var_col]][is_25])) %>% na.omit()
   
   fmt <- function(v) gsub("\\.", ",", sprintf("%.1f", v))
   
-  l1 <- paste0(fmt(mean(x_r)), "(DE ", fmt(sd(x_r)), ")")
-  l2 <- paste0(fmt(median(x_r)), "(IQR ", fmt(quantile(x_r, 0.25)), "-", fmt(quantile(x_r, 0.75)), ")")
+  l1 <- paste0(fmt(mean(x_r)), " (DE ", fmt(sd(x_r)), ")")
+  l2 <- paste0(round(median(x_r)), " (IQR ", round(quantile(x_r, 0.25)), "-", round(quantile(x_r, 0.75)), ")")
   
-  l1_2 <- paste0(fmt(mean(x_2)), "(DE ", fmt(sd(x_2)), ")")
-  l2_2 <- paste0(fmt(median(x_2)), "(IQR ", fmt(quantile(x_2, 0.25)), "-", fmt(quantile(x_2, 0.75)), ")")
+  l1_2 <- paste0(fmt(mean(x_2)), " (DE ", fmt(sd(x_2)), ")")
+  l2_2 <- paste0(round(median(x_2)), " (IQR ", round(quantile(x_2, 0.25)), "-", round(quantile(x_2, 0.75)), ")")
   
-  tibble(V = paste0("  ", "Media/Mediana"), R = paste0(l1, " <br> ", l2), Y = paste0(l1_2, " <br> ", l2_2))
+  tibble(V = paste0("**", label, "**"), 
+         R = paste0(l1, "<br>", l2), 
+         Y = paste0(l1_2, "<br>", l2_2))
 }
 
-# 3. Ensamblado de toda la tabla
 tabla_recursos_full <- bind_rows(
-  # Transfusión
-  tibble(V = "**Transfusión de hemoderivados**", R = "", Y = ""),
-  calc_cat("hematies_concentrado", 0, "No"),
-  calc_cat("hematies_concentrado", 1, "Si"),
+  
+  # Transfusión 
+  tibble(V = "**Transfusión de hemoderivados (primeras 24 horas)**", R = "", Y = ""),
+  calc_cat("transf_dico", "no", "No"),
+  calc_cat("transf_dico", "si", "Si"),
   
   # Ventilación mecánica
   tibble(V = "**Ventilación mecánica**", R = "", Y = ""),
-  calc_cat("vmec_dico", 0, "No"),
-  calc_cat("vmec_dico", 1, "Si"),
-  tibble(V = "**Días de VM (días)**", R = "", Y = ""),
-  calc_cont("vmec_dias"),
+  calc_cat("vmec_dico", "no", "No"),
+  calc_cat("vmec_dico", "si", "Si"),
+  calc_cont("vmec_dias", "Dias de VM (días)"),
   
-  # Traqueotomía
+  # Traqueotomía 
   tibble(V = "**TRAQUEOTOMÍA**", R = "", Y = ""),
-  calc_cat("traqueotomia", 0, "No"),
-  calc_cat("traqueotomia", 1, "Si"),
+  calc_cat("traqueo_dico", "no", "No"),
+  calc_cat("traqueo_dico", "si", "Si"),
   
   # Arteriografía
-  tibble(V = "**Arteriografía**", R = "", Y = ""),
-  calc_cat("arteriografia", 0, "No"),
-  calc_cat("arteriografia", 1, "Sí diagnóstica"),
-  calc_cat("arteriografia", 2, "Sí Terapéutica"),
+  tibble(V = "**Arteriografia**", R = "", Y = ""),
+  calc_cat("arteriografia", "no", "No"),
+  calc_cat("arteriografia", "si diagnostica", "Sí diagnóstica"),
+  calc_cat("arteriografia", "si terapeutica", "Sí Terapéutica"),
   
   # Terapia renal
   tibble(V = "**Terapia renal (TRRC)**", R = "", Y = ""),
-  calc_cat("terapia_renal", 0, "No"),
-  calc_cat("terapia_renal", 1, "Si")
+  calc_cat("terapia_renal", "no", "No"),
+  calc_cat("terapia_renal", "si", "Si")
 )
 
-# Renderizado final
 knitr::kable(tabla_recursos_full, col.names = c("", "RETRAUCI", "2025"), align = "lll", escape = FALSE)
+```
+
+```{r, echo=FALSE}
+is_25 <- (!is.na(df$year) & df$year == "2025")
+is_retra <- (!is.na(df$year) & df$year != "2025")
+
+fmt_pct <- function(p) {
+  val <- sprintf("%.1f", p)
+  val <- gsub("\\.", ",", val)
+  val <- sub(",0$", "", val) 
+  return(val)
+}
+
+calc_cat <- function(var_col, cat_val, label, prefix = "•   ") {
+  col_data <- as.character(df[[var_col]])
+  cat_val_char <- as.character(cat_val)
+  
+  tot_r <- sum(!is.na(col_data) & col_data != "" & is_retra)
+  tot_2 <- sum(!is.na(col_data) & col_data != "" & is_25)
+  
+  c_r <- sum(col_data == cat_val_char & is_retra, na.rm = TRUE)
+  c_2 <- sum(col_data == cat_val_char & is_25, na.rm = TRUE)
+  
+  pct_r <- if(tot_r > 0) (c_r / tot_r) * 100 else 0
+  pct_2 <- if(tot_2 > 0) (c_2 / tot_2) * 100 else 0
+  
+  str_r <- if(c_r == 0) "0" else paste0(c_r, " (", fmt_pct(pct_r), "%)")
+  str_2 <- if(c_2 == 0) "0" else paste0(c_2, " (", fmt_pct(pct_2), "%)")
+  
+  tibble(V = paste0(prefix, label), R = str_r, Y = str_2)
+}
+
+calc_cont <- function(var_col, label) {
+  x_r <- as.numeric(as.character(df[[var_col]][is_retra])) %>% na.omit()
+  x_2 <- as.numeric(as.character(df[[var_col]][is_25])) %>% na.omit()
+  
+  fmt <- function(v) gsub("\\.", ",", sprintf("%.1f", v))
+  
+  l1 <- paste0(fmt(mean(x_r)), " (DE ", fmt(sd(x_r)), ")")
+  l2 <- paste0(round(median(x_r)), " (", round(quantile(x_r, 0.25)), "-", round(quantile(x_r, 0.75)), ")")
+  
+  l1_2 <- paste0(fmt(mean(x_2)), " (DE ", fmt(sd(x_2)), ")")
+  l2_2 <- paste0(round(median(x_2)), " (", round(quantile(x_2, 0.25)), "-", round(quantile(x_2, 0.75)), ")")
+  
+  tibble(V = paste0("**", label, "**"), 
+         R = paste0(l1, "<br>", l2), 
+         Y = paste0(l1_2, "<br>", l2_2))
+}
+
+tabla_evolucion <- bind_rows(
+  
+  tibble(V = "", R = as.character(sum(is_retra)), Y = as.character(sum(is_25))),
+  
+  tibble(V = "**Evolución UCI**", R = "", Y = ""),
+  calc_cat("evolucion_uci", "alta", "Alta"),
+  calc_cat("evolucion_uci", "exitus", "Exitus"),
+  calc_cat("evolucion_uci", "exitus y donacion", "Exitus y donación"),
+
+  tibble(V = "**Destino alta UCI**", R = "", Y = ""),
+  calc_cat("destino_alta_uci", "planta", "Planta"),
+  calc_cat("destino_alta_uci", "domicilio", "Domicilio"),
+  calc_cat("destino_alta_uci", "traslado a otra uci", "Traslado a otra UCI"),
+  calc_cat("destino_alta_uci", "hospital de rehabilitacion", "Hospital de rehabilitación"),
+  calc_cat("destino_alta_uci", "hospital de origen", "Hospital de origen"),
+  calc_cat("destino_alta_uci", "hospital de referencia trauma", "Hospital de referencia de trauma"),
+  
+  tibble(V = "**Evolución hospitalaria**", R = "", Y = ""),
+  calc_cat("evolucion_hospitalaria", "alta", "Alta"),
+  calc_cat("evolucion_hospitalaria", "exitus", "Éxitus"), 
+  
+  tibble(V = "**Destino alta hospitalaria**", R = "", Y = ""),
+  calc_cat("destino_alta_hospitalaria", "domicilio", "Domicilio"),
+  calc_cat("destino_alta_hospitalaria", "traslado a otra uci", "Traslado a otra UCI"),
+  calc_cat("destino_alta_hospitalaria", "hospital de rehabilitacion", "Hospital de rehabilitación"),
+  calc_cat("destino_alta_hospitalaria", "hospital de origen", "Hospital de origen"),
+  calc_cat("destino_alta_hospitalaria", "hospital de referencia trauma", "Hospital de referencia de trauma"),
+
+  tibble(V = "**Motivo éxitus**", R = "", Y = ""),
+  calc_cat("mot_exitus", "exanguinacion", "Exanguinación"),
+  calc_cat("mot_exitus", "hec", "HEC"),
+  calc_cat("mot_exitus", "sdmo", "SDMO"),
+  calc_cat("mot_exitus", "otros", "Otros"),
+  
+  tibble(V = "**Limitación esfuerzo terapéutico**", R = "", Y = ""),
+  calc_cat("let", "no", "No"),
+  calc_cat("let", "si", "Si"),
+  
+  calc_cat("evolucion_uci", "exitus y donacion", "**Donación**", prefix = ""),
+  
+  calc_cont("dias_uci", "Estancia UCI (días)"),
+  
+  tibble(V = "**Reingreso en UCI**", R = "", Y = ""),
+  calc_cat("reingreso", "no", "No"), 
+  calc_cat("reingreso", "si", "Si")
+)
+
+knitr::kable(tabla_evolucion, col.names = c("", "RETRAUCI", "2025"), align = "lll", escape = FALSE)
+```
+```{r, echo=FALSE}
+is_25 <- (!is.na(df$year) & df$year == "2025")
+is_retra <- (!is.na(df$year) & df$year != "2025")
+
+fmt_pct <- function(p) {
+  val <- sprintf("%.1f", p)
+  val <- gsub("\\.", ",", val)
+  val <- sub(",0$", "", val) 
+  return(val)
+}
+
+calc_cat <- function(var_col, cat_val, label) {
+  col_data <- as.character(df[[var_col]]) 
+  cat_val_char <- as.character(cat_val)
+
+  tot_r <- sum(!is.na(col_data) & trimws(col_data) != "" & is_retra)
+  tot_2 <- sum(!is.na(col_data) & trimws(col_data) != "" & is_25)
+  
+  c_r <- sum(col_data == cat_val_char & is_retra, na.rm = TRUE)
+  c_2 <- sum(col_data == cat_val_char & is_25, na.rm = TRUE)
+  
+  pct_r <- if(tot_r > 0) (c_r / tot_r) * 100 else 0
+  pct_2 <- if(tot_2 > 0) (c_2 / tot_2) * 100 else 0
+  
+  str_r <- if(c_r == 0) "0" else paste0(c_r, " (", fmt_pct(pct_r), "%)")
+  str_2 <- if(c_2 == 0) "0" else paste0(c_2, " (", fmt_pct(pct_2), "%)")
+  
+  tibble(V = paste0("•   ", label), R = str_r, Y = str_2)
+}
+
+tabla_complicaciones <- bind_rows(
+
+  tibble(V = "", R = as.character(sum(is_retra)), Y = as.character(sum(is_25))),
+  
+  # Hemodinámica
+  tibble(V = "**Hemodinámica**", R = "", Y = ""),
+  calc_cat("situacion_hemodinamica", "estable", "Estable"),
+  calc_cat("situacion_hemodinamica", "inestable remonta con volumen", "Inestable remonta con volumen"),
+  calc_cat("situacion_hemodinamica", "shock", "Shock"),
+  calc_cat("situacion_hemodinamica", "shock refractario", "Shock refractario"),
+  
+  # Respiratoria
+  tibble(V = "**Respiratoria (pO2/FiO2)**", R = "", Y = ""),
+  calc_cat("adrs", "no", "No"),
+  calc_cat("adrs", "> 300", ">300"),
+  calc_cat("adrs", "201 -300", ">201-300"),
+  calc_cat("adrs", "101-200", "101-200"),
+  calc_cat("adrs", "<100", "<100"),
+  
+  # Renal
+  tibble(V = "**Renal**", R = "", Y = ""),
+  calc_cat("fallo_renal", "no", "No"),
+  calc_cat("fallo_renal", "risk (riesgo)", "Riesgo"),
+  calc_cat("fallo_renal", "injury (injuria)", "Injuria"),
+  calc_cat("fallo_renal", "failure (fallo)", "Fallo"),
+  calc_cat("fallo_renal", "loss (perdida)", "Pérdida"),
+  calc_cat("fallo_renal", "eskd (ira)", "ESKD (IRA)"),
+  
+  # Hemorragia masiva
+  tibble(V = "**Hemorragia masiva**", R = "", Y = ""),
+  calc_cat("hemorragia_masiva", "no", "No"),
+  calc_cat("hemorragia_masiva", "si", "Si"),
+  
+  # Coagulopatía trauma
+  tibble(V = "**Coagulopatia trauma**", R = "", Y = ""),
+  calc_cat("coagulopatia", "no", "No"),
+  calc_cat("coagulopatia", "si", "Si"),
+  
+  # SDMO
+  tibble(V = "**Sindrome de disfunción multiorgánica (S.D.M.O)**", R = "", Y = ""),
+  calc_cat("sdmo", "sdmo precoz", "**Precoz:** primeras 72 horas."),
+  calc_cat("sdmo", "sdmo tardio", "**Tardío:** más de 72 horas."),
+  
+  # Hipertensión endocraneal
+  tibble(V = "**Hipertensión endocraneal**", R = "", Y = ""),
+  calc_cat("hec", "si, precisa medidas de 1º nivel", "Medidas primer nivel"),
+  calc_cat("hec", "si, precisa medidas de 2º nivel", "Medidas segundo nivel"),
+  
+  # Rabdomiólisis
+  tibble(V = "**Rabdomiolisis**", R = "", Y = ""),
+  calc_cat("rabdomiolisis", "no", "No"),
+  calc_cat("rabdomiolisis", "si", "Si"),
+  
+  # Infección nosocomial
+  tibble(V = "**Infección nosocomial**", R = "", Y = ""),
+  calc_cat("infeccion_nosocomial", "no", "No"),
+  calc_cat("infeccion_nosocomial", "si", "Si")
+)
+
+knitr::kable(tabla_complicaciones, col.names = c("", "RETRAUCI", "2025"), align = "lll", escape = FALSE)
 ```
