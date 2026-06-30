@@ -373,7 +373,6 @@ ggplot(hospitals_data, aes(x = year, y = num_hospitals, group = 1)) +
 ```
 
 ```{r, echo=FALSE}
-# Calcular ingresos anuales por hospital clínico real
 hospital_cases_annual <- df %>%
   filter(!is.na(year), !is.na(hospital), hospital != "") %>%
   group_by(year, hospital) %>%
@@ -384,7 +383,6 @@ hospital_cases_annual <- df %>%
     class_150 = admissions > 150
   )
 
-# Formatear datos para ggplot en formato largo
 bar_data <- hospital_cases_annual %>%
   group_by(year) %>%
   summarise(
@@ -413,7 +411,6 @@ ggplot(bar_data, aes(x = year, y = Count, fill = Classification_Group)) +
 ```
 
 ```{r, echo=FALSE}
-# Calcular casos por día promedio en el año
 daily_data <- df %>%
   filter(!is.na(year)) %>%
   group_by(year) %>%
@@ -422,18 +419,15 @@ daily_data <- df %>%
     .groups = "drop"
   ) %>%
   mutate(
-    # Considerar años bisiestos para mayor precisión (2016, 2020, 2024)
     days_in_year = ifelse(as.numeric(year) %% 4 == 0, 366, 365),
     mean_daily = total_cases / days_in_year,
     year_num = as.numeric(year)
   )
 
-# Valor para el título de 2025 (asumiendo que está en los datos)
 media_2025 <- round(daily_data$mean_daily[daily_data$year == "2025"], 1)
 titulo_dinamico <- paste0("Inclusión diaria 2025: Media ", media_2025, " casos")
 
 ggplot(daily_data, aes(x = year, y = mean_daily, group = 1)) +
-  # Usamos spline para suavizar la línea tal como en la imagen
   geom_line(size = 1.2, color = "#405263") +
   labs(
     title = titulo_dinamico,
@@ -453,14 +447,11 @@ ggplot(daily_data, aes(x = year, y = mean_daily, group = 1)) +
 ```{r, echo=FALSE}
 df_time <- df %>%
   mutate(
-    # Convertir a formato numérico el ISS para el filtro
     iss_num = suppressWarnings(as.numeric(as.character(iss))),
     
-    # Crear variables datetime combinando fecha y hora
     trauma_dt = as.POSIXct(paste(fecha_trauma, hora_trauma), format="%d/%m/%Y %H:%M"),
     uci_dt = as.POSIXct(paste(fecha_ingreso_uci, hora_ingreso_uci), format="%d/%m/%Y %H:%M"),
     
-    # Calcular diferencia en minutos
     time_to_uci = as.numeric(difftime(uci_dt, trauma_dt, units = "mins"))
   ) %>%
   filter(
@@ -474,7 +465,7 @@ ggplot(df_time, aes(x = year, y = time_to_uci)) +
     fill = "#5b9bd5", 
     color = "black",
     width = 0.4,
-    outlier.shape = NA # Ocultar outliers tal como se ve en la imagen de barras base
+    outlier.shape = NA 
   ) +
   labs(
     x = NULL, 
@@ -492,14 +483,12 @@ df_pyramid <- df %>%
   filter(!is.na(edad), !is.na(genero), !is.na(year), genero != "") %>%
   mutate(
     edad_num = as.numeric(as.character(edad)),
-    # Homogeneizar texto de género (asegúrate de que coincida con tus datos)
     genero_clean = case_when(
       grepl("(?i)masculino|hombre|h", genero) ~ "Hombres",
       grepl("(?i)femenino|mujer|m", genero) ~ "Mujeres",
       TRUE ~ "Otros"
     ),
     periodo = ifelse(as.numeric(year) <= 2019, "2015-2019", "2020-2025"),
-    # Crear grupos de edad
     grupo_edad = cut(edad_num, 
                      breaks = c(15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, Inf),
                      labels = c("15-19", "20-24", "25-29", "30-34", "35-39", "40-44", "45-49", 
@@ -514,10 +503,8 @@ df_pyramid <- df %>%
   mutate(prop_plot = ifelse(genero_clean == "Hombres", -prop, prop))
 
 ggplot(df_pyramid, aes(y = grupo_edad)) +
-  # Periodo 1: Sombras (2015-2019)
   geom_col(data = filter(df_pyramid, periodo == "2015-2019"), 
            aes(x = prop_plot, fill = genero_clean), alpha = 0.4, color = NA, width = 1) +
-  # Periodo 2: Contornos (2020-2025)
   geom_col(data = filter(df_pyramid, periodo == "2020-2025"), 
            aes(x = prop_plot, color = genero_clean), fill = "transparent", size = 1, width = 1) +
   scale_fill_manual(values = c("Hombres" = "#3b7ebf", "Mujeres" = "#d44e52")) +
@@ -542,7 +529,6 @@ ggplot(df_pyramid, aes(y = grupo_edad)) +
 ```
 
 ```{r, echo=FALSE}
-# Preparar datos de barras (volumen por género)
 df_bars <- df %>% 
   filter(!is.na(year), !is.na(genero), genero != "") %>%
   mutate(
@@ -556,7 +542,6 @@ df_bars <- df %>%
   group_by(year, genero_clean) %>% 
   summarise(count = n(), .groups = "drop")
 
-# Preparar datos de línea (% ISS > 15)
 df_line <- df %>% 
   filter(!is.na(year)) %>%
   mutate(iss_num = suppressWarnings(as.numeric(as.character(iss)))) %>%
@@ -568,18 +553,14 @@ df_line <- df %>%
     .groups = "drop"
   )
 
-# Calcular coeficiente para el segundo eje (escala la línea a la altura máxima de las barras)
 max_bar_height <- max(df_line$total, na.rm = TRUE)
 coeff <- max_bar_height / 100
 
 ggplot() +
-  # Barras apiladas (Carga asistencial)
   geom_bar(data = df_bars, aes(x = as.numeric(year), y = count, fill = genero_clean), 
            stat = "identity", position = "stack", width = 0.7, color = "#404040", size = 0.2) +
-  # Línea de gravedad
   geom_line(data = df_line, aes(x = as.numeric(year), y = pct_graves * coeff), 
             color = "#f46a24", size = 1.2) +
-  # Puntos sobre la línea
   geom_point(data = df_line, aes(x = as.numeric(year), y = pct_graves * coeff), 
              color = "#f46a24", fill = "white", shape = 21, size = 3, stroke = 1.5) +
   scale_fill_manual(values = c("masculino" = "#4a7ebb", "femenino" = "#9bbb59")) +
@@ -587,7 +568,6 @@ ggplot() +
   scale_y_continuous(
     name = "Pacientes (N)",
     limits = c(0, max_bar_height * 1.1),
-    # Configuración del eje secundario (des-escala los valores)
     sec.axis = sec_axis(~ . / coeff, name = "Gravedad (% ISS > 15)", breaks = seq(0, 100, by = 25))
   ) +
   labs(
@@ -604,33 +584,27 @@ ggplot() +
 ```
 
 ```{r, echo=FALSE}
-# Asegurar que las variables MAIS sean numéricas
 df_mais <- df %>%
   mutate(across(c(mais1, mais2, mais3, mais4, mais5, mais6), ~ suppressWarnings(as.numeric(as.character(.)))))
 
-# Función auxiliar para calcular Media (DE)
 calc_mean_sd <- function(x) {
   m <- round(mean(x, na.rm = TRUE), 2)
   s <- round(sd(x, na.rm = TRUE), 2)
-  # Formatear para que siempre muestre 2 decimales y coma como separador si es necesario
   paste0(format(m, nsmall = 2, trim = TRUE), " (DE ", format(s, nsmall = 2, trim = TRUE), ")")
 }
 
-# Calcular datos para todo el registro (RETRAUCI)
 res_all <- df_mais %>%
   summarise(across(c(mais1, mais2, mais3, mais4, mais5, mais6), calc_mean_sd)) %>%
   pivot_longer(cols = everything(), names_to = "MAIS", values_to = "RETRAUCI")
 
-# Calcular datos solo para 2025
 res_2025 <- df_mais %>%
   filter(year == "2025") %>%
   summarise(across(c(mais1, mais2, mais3, mais4, mais5, mais6), calc_mean_sd)) %>%
   pivot_longer(cols = everything(), names_to = "MAIS", values_to = "2025")
 
-# Unir y formatear la tabla
 table_mais <- res_all %>%
   left_join(res_2025, by = "MAIS") %>%
-  mutate(MAIS = toupper(MAIS)) # Convertir 'mais1' a 'MAIS1'
+  mutate(MAIS = toupper(MAIS)) 
 
 knitr::kable(
   table_mais, 
@@ -639,24 +613,21 @@ knitr::kable(
 ```
 
 ```{r, echo=FALSE}
-# Preparar los datos para el gráfico
 plot_mais_data <- df_mais %>%
   filter(!is.na(year)) %>%
   group_by(year) %>%
   summarise(across(c(mais1, mais2, mais3, mais4, mais5, mais6), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
   pivot_longer(cols = starts_with("mais"), names_to = "Region", values_to = "Media")
 
-# Generar el gráfico
 ggplot(plot_mais_data, aes(x = as.numeric(year), y = Media, color = Region)) +
   geom_line(size = 1.2) + 
-  # Colores extraídos de la imagen original
   scale_color_manual(values = c(
-    "mais1" = "#70ad47", # Verde
-    "mais2" = "#5b9bd5", # Azul claro
-    "mais3" = "#ffc000", # Amarillo/Dorado
-    "mais4" = "#a5a5a5", # Gris
-    "mais5" = "#ed7d31", # Naranja
-    "mais6" = "#4472c4"  # Azul oscuro
+    "mais1" = "#70ad47",
+    "mais2" = "#5b9bd5",
+    "mais3" = "#ffc000",
+    "mais4" = "#a5a5a5",
+    "mais5" = "#ed7d31",
+    "mais6" = "#4472c4" 
   )) +
   scale_x_continuous(breaks = seq(min(as.numeric(plot_mais_data$year)), max(as.numeric(plot_mais_data$year)), by = 1)) +
   scale_y_continuous(limits = c(0, 4), breaks = seq(0, 4, by = 0.5)) +
@@ -676,14 +647,11 @@ ggplot(plot_mais_data, aes(x = as.numeric(year), y = Media, color = Region)) +
 ```
 
 ```{r, echo=FALSE}
-# Preparar los datos
 df_violin <- df %>%
   filter(!is.na(edad), !is.na(intencionalidad), intencionalidad != "") %>%
   mutate(
     edad_num = suppressWarnings(as.numeric(as.character(edad))),
     
-    # Mapear y agrupar la intencionalidad para que coincida con la gráfica
-    # Ajusta los términos entre comillas ("tráfico", "caída") si en tu base se llaman diferente
     intencionalidad_clean = case_when(
       grepl("(?i)tráfico|trafico|coche|moto|atropello", intencionalidad) ~ "Accidental: Tráfico",
       grepl("(?i)caída|caida|precipita", intencionalidad) ~ "Accidental: Caída",
@@ -696,8 +664,6 @@ df_violin <- df %>%
   ) %>%
   filter(intencionalidad_clean != "Otros", !is.na(edad_num)) %>%
   mutate(
-    # Ordenar los factores para que aparezcan en el orden correcto 
-    # (En ggplot el eje Y se dibuja de abajo hacia arriba, por eso Agresión va primero)
     intencionalidad_clean = factor(intencionalidad_clean, levels = c(
       "Agresión", 
       "Autólisis", 
@@ -708,34 +674,29 @@ df_violin <- df %>%
     ))
   )
 
-# Generar el gráfico de violín + boxplot
 ggplot(df_violin, aes(x = edad_num, y = intencionalidad_clean, fill = intencionalidad_clean)) +
   
-  # Capa del violín (escala "width" para que todos tengan el mismo grosor máximo)
   geom_violin(trim = TRUE, color = "#555555", alpha = 0.85, scale = "width") +
   
-  # Capa del boxplot interior
   geom_boxplot(width = 0.1, fill = "white", color = "#333333", outlier.size = 0.5, outlier.alpha = 0.4) +
   
-  # Paleta de colores imitando la imagen original
   scale_fill_manual(values = c(
-    "Accidental: Tráfico" = "#b4c7e7",   # Azul claro
-    "Accidental: Caída" = "#2e75b6",     # Azul oscuro
-    "Accidental: Laboral" = "#548235",   # Verde oscuro
-    "Accidental: Deportivo" = "#a9d18e", # Verde claro
-    "Autólisis" = "#9e480e",             # Morado (Ajustado al tono de la imagen: #9661a0) -> Corregimos abajo
-    "Agresión" = "#c00000"               # Rojo
+    "Accidental: Tráfico" = "#b4c7e7",  
+    "Accidental: Caída" = "#2e75b6",   
+    "Accidental: Laboral" = "#548235", 
+    "Accidental: Deportivo" = "#a9d18e",
+    "Autólisis" = "#9e480e",            
+    "Agresión" = "#c00000"             
   )) +
   scale_fill_manual(values = c(
     "Accidental: Tráfico" = "#b4c7e7",   
     "Accidental: Caída" = "#2e75b6",     
     "Accidental: Laboral" = "#548235",   
     "Accidental: Deportivo" = "#a9d18e", 
-    "Autólisis" = "#a072b9",             # Morado
+    "Autólisis" = "#a072b9", 
     "Agresión" = "#c00000"               
   )) +
   
-  # Escala del eje X
   scale_x_continuous(breaks = seq(10, 100, by = 10)) +
   
   labs(
@@ -748,36 +709,32 @@ ggplot(df_violin, aes(x = edad_num, y = intencionalidad_clean, fill = intenciona
   theme(
     plot.title = element_text(face = "bold", size = 14),
     plot.subtitle = element_text(color = "#555555", size = 11),
-    legend.position = "none", # Ocultamos leyenda porque el eje Y ya explica los colores
+    legend.position = "none", 
     axis.text.y = element_text(face = "bold", size = 11, color = "black"),
     axis.text.x = element_text(size = 10),
-    panel.grid.major.y = element_blank(), # Quitamos líneas horizontales del fondo
+    panel.grid.major.y = element_blank(), 
     panel.grid.minor.x = element_blank()
   )
 ```
 
 ```{r, echo=FALSE}
 df_area <- df %>%
-  # Filtrar para el periodo 2016-2025 (según subtítulo del gráfico)
   filter(!is.na(year), as.numeric(year) >= 2016, as.numeric(year) <= 2025) %>%
   filter(!is.na(edad), !is.na(genero), !is.na(intencionalidad), genero != "") %>%
   mutate(
     edad_num = suppressWarnings(as.numeric(as.character(edad))),
     
-    # Limpiar y agrupar género
     genero_clean = case_when(
       grepl("(?i)masculino|hombre|h|varón|varon", genero) ~ "Varones",
       grepl("(?i)femenino|mujer|m", genero) ~ "Mujeres",
       TRUE ~ "Otros"
     ),
     
-    # Crear los rangos de edad (de 15-24 hasta 85+)
     rango_edad = cut(edad_num, 
                      breaks = c(15, 25, 35, 45, 55, 65, 75, 85, Inf),
                      labels = c("15-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75-84", "85+"),
                      right = FALSE),
     
-    # Agrupar intencionalidad (igual que en el violín)
     intencionalidad_clean = case_when(
       grepl("(?i)tráfico|trafico|coche|moto|atropello", intencionalidad) ~ "Accidental: Tráfico",
       grepl("(?i)caída|caida|precipita", intencionalidad) ~ "Accidental: Caída",
@@ -790,59 +747,49 @@ df_area <- df %>%
   ) %>%
   filter(genero_clean %in% c("Mujeres", "Varones"), !is.na(rango_edad)) %>%
   
-  # Ordenar los factores de abajo hacia arriba para el apilado (stack) en geom_area
   mutate(
     intencionalidad_clean = factor(intencionalidad_clean, levels = c(
       "Autólisis", 
       "Agresión", 
       "Accidental: Tráfico", 
-      "Otros",               # Banda gris visible en la gráfica
+      "Otros",   
       "Accidental: Laboral", 
       "Accidental: Deportivo", 
       "Accidental: Caída"
     ))
   ) %>%
   
-  # Calcular frecuencias por género, rango de edad e intencionalidad
   group_by(genero_clean, rango_edad, intencionalidad_clean) %>%
   summarise(n = n(), .groups = "drop") %>%
   
-  # Agrupar por género y edad para calcular el % sobre el total de ese grupo
   group_by(genero_clean, rango_edad) %>%
   mutate(
     total = sum(n),
     pct = n / total,
-    # Convertir el rango de edad a un valor numérico para que geom_area funcione suavemente
     rango_edad_num = as.numeric(rango_edad)
   )
 
-# Generar el gráfico
 ggplot(df_area, aes(x = rango_edad_num, y = pct, fill = intencionalidad_clean)) +
-  # Usar geom_area para colorear las áreas rellenas
   geom_area(color = "white", size = 0.1, alpha = 0.95) +
   
-  # Dividir por sexo ("Mujeres" y "Varones")
   facet_wrap(~ genero_clean, ncol = 2) +
   
-  # Definir los colores exactos de la imagen de referencia
   scale_fill_manual(values = c(
-    "Accidental: Caída" = "#3b82b6",      # Azul oscuro/medio
-    "Accidental: Deportivo" = "#a9d18e",  # Verde claro
-    "Accidental: Laboral" = "#4f9a46",    # Verde oscuro
-    "Otros" = "#999999",                  # Gris
-    "Accidental: Tráfico" = "#b8cce4",    # Azul claro
-    "Agresión" = "#cb3335",               # Rojo
-    "Autólisis" = "#9d73b8"               # Morado
+    "Accidental: Caída" = "#3b82b6", 
+    "Accidental: Deportivo" = "#a9d18e",
+    "Accidental: Laboral" = "#4f9a46", 
+    "Otros" = "#999999",       
+    "Accidental: Tráfico" = "#b8cce4", 
+    "Agresión" = "#cb3335",             
+    "Autólisis" = "#9d73b8" 
   )) +
   
-  # Configurar eje X para mostrar las etiquetas de texto originales
   scale_x_continuous(
     breaks = 1:8, 
     labels = levels(df_area$rango_edad),
-    expand = c(0, 0) # Quitar el espacio en blanco de los bordes
+    expand = c(0, 0)
   ) +
   
-  # Configurar eje Y en formato porcentaje
   scale_y_continuous(
     labels = percent_format(accuracy = 1),
     expand = c(0, 0)
@@ -856,21 +803,17 @@ ggplot(df_area, aes(x = rango_edad_num, y = pct, fill = intencionalidad_clean)) 
     fill = "Intencionalidad"
   ) +
   
-  # Tematización limpia para igualar la imagen
   theme_minimal() +
   theme(
     plot.title = element_text(face = "bold", size = 14),
     plot.subtitle = element_text(color = "#404040", size = 11, margin = margin(b = 15)),
     
-    # Leyenda abajo, en dos o tres columnas
     legend.position = "bottom",
     legend.title = element_text(face = "bold"),
     
-    # Encabezados de los paneles (strip) tipo caja oscura con texto blanco
     strip.background = element_rect(fill = "#405263", color = NA),
     strip.text = element_text(color = "white", face = "bold", size = 12),
     
-    # Ajustes de los ejes
     axis.text.x = element_text(size = 9, color = "black"),
     axis.text.y = element_text(size = 9, color = "#555555"),
     axis.title.x = element_text(margin = margin(t = 10)),
@@ -879,18 +822,15 @@ ggplot(df_area, aes(x = rango_edad_num, y = pct, fill = intencionalidad_clean)) 
     panel.grid.minor.x = element_blank(),
     panel.spacing = unit(1.5, "lines") # Espacio entre paneles
   ) +
-  # Forzar distribución de leyenda en columnas
   guides(fill = guide_legend(ncol = 3, reverse = TRUE))
 ```
 
 ```{r, echo=FALSE}
-# Preparar los datos
 df_mecanismo <- df %>%
   filter(!is.na(year), !is.na(mecanismo), mecanismo != "") %>%
   mutate(
     year_num = as.numeric(year),
     
-    # Categorizar el mecanismo basado en texto (Ajusta las palabras si es necesario)
     mec_clean = case_when(
       grepl("(?i)caída|caida", mecanismo) & !grepl("(?i)precipita", mecanismo) ~ "Caída accidental",
       grepl("(?i)precipitaci|precipita", mecanismo) ~ "Precipitación",
@@ -900,11 +840,9 @@ df_mecanismo <- df %>%
       TRUE ~ "Otros (Resto de mecanismos)"
     )
   ) %>%
-  # Calcular frecuencias absolutas por año y mecanismo
   group_by(year_num, mec_clean) %>%
   summarise(n = n(), .groups = "drop") %>%
   
-  # Calcular porcentajes relativos anuales
   group_by(year_num) %>%
   mutate(
     total_year = sum(n),
@@ -912,43 +850,36 @@ df_mecanismo <- df %>%
   ) %>%
   ungroup()
 
-# Separar datos del primer y último año para poner las etiquetas de porcentaje
 df_labels_start <- df_mecanismo %>% filter(year_num == min(year_num))
 df_labels_end <- df_mecanismo %>% filter(year_num == max(year_num))
 
-# Generar el gráfico
 ggplot(df_mecanismo, aes(x = year_num, y = pct, color = mec_clean)) +
   geom_line(size = 1.2) +
   geom_point(size = 2.5) +
   
-  # Etiquetas numéricas en el primer año (2015) - situadas encima del punto
   geom_text(data = df_labels_start, 
             aes(label = paste0(round(pct, 1), "%")), 
             vjust = -1, hjust = 0.5, size = 3.5, fontface = "bold", show.legend = FALSE) +
             
-  # Etiquetas numéricas en el último año (2025) - situadas a la derecha del punto
   geom_text(data = df_labels_end, 
             aes(label = paste0(round(pct, 1), "%")), 
             hjust = -0.2, vjust = 0.5, size = 3.5, fontface = "bold", show.legend = FALSE) +
             
-  # Paleta de colores personalizada (extraída de tu imagen)
   scale_color_manual(values = c(
-    "Caída accidental" = "#20a387",          # Verde azulado
-    "Moto" = "#e27e31",                      # Naranja
-    "Coche" = "#8c80b6",                     # Morado claro
-    "Precipitación" = "#e2388e",             # Rosa fuerte
-    "Atropello" = "#73b640",                 # Verde claro
-    "Otros (Resto de mecanismos)" = "#eeb111" # Amarillo dorado
+    "Caída accidental" = "#20a387", 
+    "Moto" = "#e27e31", 
+    "Coche" = "#8c80b6",
+    "Precipitación" = "#e2388e", 
+    "Atropello" = "#73b640", 
+    "Otros (Resto de mecanismos)" = "#eeb111" 
   )) +
   
-  # Ajustar eje Y (0% a 35% para que no se corten las etiquetas superiores)
   scale_y_continuous(
     limits = c(0, 35), 
     breaks = seq(0, 30, by = 10),
     labels = function(x) paste0(x, "%")
   ) +
   
-  # Ajustar eje X (dar un poco de margen extra a la derecha para la etiqueta de 2025)
   scale_x_continuous(
     breaks = seq(min(df_mecanismo$year_num), max(df_mecanismo$year_num), by = 1),
     expand = expansion(mult = c(0.05, 0.1)) # 10% de espacio extra a la derecha
@@ -972,9 +903,8 @@ ggplot(df_mecanismo, aes(x = year_num, y = pct, color = mec_clean)) +
     legend.position = "bottom",
     legend.title = element_text(face = "bold"),
     panel.grid.minor = element_blank(),
-    panel.grid.major.x = element_line(linetype = "dashed", color = "#e0e0e0") # Líneas verticales punteadas como en la imagen
+    panel.grid.major.x = element_line(linetype = "dashed", color = "#e0e0e0")
   ) +
-  # Forzar que la leyenda tenga 3 columnas para que encaje bien en la base
   guides(color = guide_legend(ncol = 3))
 ```
 
@@ -1245,16 +1175,11 @@ g_final
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-library(dplyr)
-library(tidyr)
-
-# 1. Preparar datos base con flags de periodo
 df_tabla <- df %>%
   mutate(
     is_25 = (!is.na(year) & year == "2025"),
     is_retra = (!is.na(year) & year != "2025"),
     
-    # Limpieza de categorías
     procedencia = ifelse(is.na(procedencia) | procedencia == "", "Desconocido", as.character(procedencia)),
     intencionalidad = ifelse(is.na(intencionalidad) | intencionalidad == "", "Desconocido", as.character(intencionalidad)),
     mecanismo = ifelse(is.na(mecanismo) | mecanismo == "", "Desconocido", as.character(mecanismo)),
@@ -1269,14 +1194,12 @@ df_tabla <- df %>%
     )
   )
 
-# 2. Función maestra de conteo con DENOMINADORES FIJOS
-# tot_retra y tot_25 son el número total de pacientes de cada periodo
+
 tot_retra <- sum(df_tabla$is_retra, na.rm = TRUE)
 tot_25 <- sum(df_tabla$is_25, na.rm = TRUE)
 
 generar_filas_fix <- function(data, variable, ordenar_desc = FALSE) {
   
-  # Contamos por categoría dentro de cada grupo
   sum_retra <- data %>% filter(is_retra) %>% count(!!sym(variable), name = "n_retra")
   sum_25 <- data %>% filter(is_25) %>% count(!!sym(variable), name = "n_25")
   
@@ -1299,10 +1222,8 @@ generar_filas_fix <- function(data, variable, ordenar_desc = FALSE) {
     select(Variable, RETRAUCI, `2025`)
 }
 
-# 3. Construir secciones
 row_pacientes <- tibble(Variable = "**Nº Pacientes**", RETRAUCI = as.character(tot_retra), `2025` = as.character(tot_25))
 
-# Sexo (Cálculo directo con denominadores fijos)
 n_muj_retra <- sum(grepl("(?i)femenino|mujer|m", df_tabla$genero) & df_tabla$is_retra, na.rm = TRUE)
 n_hom_retra <- sum(grepl("(?i)masculino|hombre|h|varón|varon", df_tabla$genero) & df_tabla$is_retra, na.rm = TRUE)
 n_muj_25 <- sum(grepl("(?i)femenino|mujer|m", df_tabla$genero) & df_tabla$is_25, na.rm = TRUE)
@@ -1314,7 +1235,6 @@ row_sexo <- tibble(
   `2025` = paste0("(", n_muj_25, "/", n_hom_25, ")")
 )
 
-# 4. Ensamblar final
 tabla_final <- bind_rows(
   row_pacientes,
   tibble(Variable = "**Edad**", RETRAUCI = "", `2025` = ""), generar_filas_fix(df_tabla, "edad_cat"),
@@ -1327,29 +1247,20 @@ tabla_final <- bind_rows(
 knitr::kable(tabla_final, col.names = c("", "RETRAUCI", "2025"), align = c("l", "c", "c"))
 ```
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-library(dplyr)
-library(tidyr)
-
-# 1. Preparar datos con filtros mutuamente excluyentes para las columnas
 df_t1 <- df %>%
   mutate(
-    # --- Filtros de Columnas (Histórico vs 2025) ---
     is_25 = (!is.na(year) & year == "2025"),
     is_retra = (!is.na(year) & year != "2025"),
 
-    # --- Tipo de trauma ---
     is_contuso = grepl("(?i)contuso|cerrado", tipo_trauma),
     is_penetrante = grepl("(?i)penetrante|abierto", tipo_trauma),
 
-    # --- Fármacos (independientes) ---
     is_anti = grepl("(?i)1|si|s|true|positivo", antiagregado) & !is.na(antiagregado) & antiagregado != "",
     is_dicu = grepl("(?i)1|si|s|true|positivo", dicumarinicos) & !is.na(dicumarinicos) & dicumarinicos != "",
     is_acod = grepl("(?i)1|si|s|true|positivo", acod) & !is.na(acod) & acod != "",
-    
-    # "No constan": Verdadero SOLO si NINGUNO de los tres anteriores está marcado
+
     is_none_farm = !(is_anti | is_dicu | is_acod),
 
-    # --- Atención prehospitalaria ---
     aten_pre = case_when(
       grepl("(?i)uvi|medicalizada|samu", atencion_prehospitalaria) & !grepl("(?i)no", atencion_prehospitalaria) ~ "- UVI móvil",
       grepl("(?i)helic|aereo", atencion_prehospitalaria) ~ "- Helicóptero",
@@ -1360,7 +1271,6 @@ df_t1 <- df %>%
     )
   )
 
-# 2. Función auxiliar adaptada para los nuevos denominadores
 make_row <- function(var_name, count_retra, den_retra, count_25, den_25) {
   pct_retra <- ifelse(den_retra > 0, (count_retra / den_retra) * 100, 0)
   pct_25 <- ifelse(den_25 > 0, (count_25 / den_25) * 100, 0)
@@ -1371,13 +1281,11 @@ make_row <- function(var_name, count_retra, den_retra, count_25, den_25) {
   tibble(Variable = var_name, RETRAUCI = val_retra, `2025` = val_25)
 }
 
-# 3. Calcular denominadores globales
 tot_retra <- sum(df_t1$is_retra, na.rm = TRUE)
 tot_25 <- sum(df_t1$is_25, na.rm = TRUE)
 
 row_pacientes <- tibble(Variable = "**Nº Pacientes**", RETRAUCI = as.character(tot_retra), `2025` = as.character(tot_25))
 
-# -- Tipo de trauma (Denominador excluye vacíos) --
 den_trauma_retra <- sum((df_t1$is_contuso | df_t1$is_penetrante) & df_t1$is_retra, na.rm = TRUE)
 den_trauma_25 <- sum((df_t1$is_contuso | df_t1$is_penetrante) & df_t1$is_25, na.rm = TRUE)
 
@@ -1385,14 +1293,12 @@ head_trauma <- tibble(Variable = "**Tipo de trauma**", RETRAUCI = "", `2025` = "
 r_contuso <- make_row("- Contuso", sum(df_t1$is_contuso & df_t1$is_retra, na.rm=T), den_trauma_retra, sum(df_t1$is_contuso & df_t1$is_25, na.rm=T), den_trauma_25)
 r_pene <- make_row("- Penetrante", sum(df_t1$is_penetrante & df_t1$is_retra, na.rm=T), den_trauma_retra, sum(df_t1$is_penetrante & df_t1$is_25, na.rm=T), den_trauma_25)
 
-# -- Fármacos (Denominador: Total de pacientes) --
 head_farmacos <- tibble(Variable = "**Consumo de antiagregantes o anticoagulantes**", RETRAUCI = "", `2025` = "")
 r_none <- make_row("- No constan", sum(df_t1$is_none_farm & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$is_none_farm & df_t1$is_25, na.rm=T), tot_25)
 r_anti <- make_row("- Antiagregados", sum(df_t1$is_anti & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$is_anti & df_t1$is_25, na.rm=T), tot_25)
 r_dicu <- make_row("- Dicumarínicos", sum(df_t1$is_dicu & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$is_dicu & df_t1$is_25, na.rm=T), tot_25)
 r_acod <- make_row("- ACOD", sum(df_t1$is_acod & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$is_acod & df_t1$is_25, na.rm=T), tot_25)
 
-# -- Atención prehospitalaria (Denominador: Total de pacientes) --
 head_prehosp <- tibble(Variable = "**Atención prehospitalaria**", RETRAUCI = "", `2025` = "")
 cats_pre <- c("- UVI móvil", "- Helicóptero", "- No medicalizada", "- Sin atención prehospitalaria", "- Soporte Vital Enfermería", "- Desconocido")
 
@@ -1400,7 +1306,6 @@ rows_prehosp <- bind_rows(lapply(cats_pre, function(c) {
   make_row(c, sum(df_t1$aten_pre == c & df_t1$is_retra, na.rm=T), tot_retra, sum(df_t1$aten_pre == c & df_t1$is_25, na.rm=T), tot_25)
 }))
 
-# 4. Ensamblar tabla final
 tabla1_final <- bind_rows(
   row_pacientes,
   head_trauma, r_contuso, r_pene,
@@ -1408,41 +1313,29 @@ tabla1_final <- bind_rows(
   head_prehosp, rows_prehosp
 )
 
-# 5. Renderizar
 knitr::kable(tabla1_final, col.names = c("", "RETRAUCI", "2025"), align = c("l", "l", "l"))
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-library(dplyr)
-library(tidyr)
-
-# 1. Preparar datos garantizando denominadores totales y capturando números
 df_t2 <- df %>%
   mutate(
-    # Garantizamos que TODOS los pacientes caigan en uno de los dos denominadores
-    # Si no es de 2025 (o su fecha está en blanco), va al histórico (RETRAUCI)
     is_25 = (!is.na(year) & year == "2025"),
     is_retra = !is_25, 
     
     tce_str = as.character(tce),
-    
-    # Búsqueda ampliada: ahora captura tanto texto (ej: "Tipo III") como números directos (ej: "3")
+
     tce_cl = case_when(
       grepl("(?i)difusa.*iii|tipo 3|tipo iii", tce_str) | tce_str == "3" ~ "- Les Difusa Tipo III (sweling difuso): no lesión masa y cisternas comprimidas o ausentes",
       grepl("(?i)difusa.*iv|tipo 4|tipo iv", tce_str) | tce_str == "4" ~ "- Les Difusa Tipo IV (sweling hemisférico): no lesión, desviación LM > 5mm",
       grepl("(?i)difusa.*ii|tipo 2|tipo ii", tce_str) | tce_str == "2" ~ "- Les Difusa Tipo II: sin lesión masa >25 cc, con cisternas presentes, línea media (LM) < 6 mm",
       grepl("(?i)difusa.*i\\b|tipo 1|tipo i\\b", tce_str) | tce_str == "1" ~ "- Les Difusa Tipo I: sin lesión intracraneal visible",
-      
-      # IMPORTANTE: "no evacuada" va primero para que la palabra "evacuada" no lo pise por error
       grepl("(?i)no evacuada|tipo 6|tipo vi", tce_str) | tce_str == "6" ~ "- Les Masa no Evacuada (Tipo VI): lesión masa > 25 cc no operada",
       grepl("(?i)evacuada|tipo 5|tipo v\\b", tce_str) | tce_str == "5" ~ "- Les Masa Evacuada (Tipo V): cualquier lesión evacuada quirúrgicamente",
-      
-      # Si está vacío, dice "No", "0", etc., se asume sin TCE
+
       TRUE ~ "- No TCE"
     )
   )
 
-# 2. Función auxiliar matemática estricta
 make_row_tce <- function(var_name, count_retra, den_retra, count_25, den_25) {
   pct_retra <- ifelse(den_retra > 0, (count_retra / den_retra) * 100, 0)
   pct_25 <- ifelse(den_25 > 0, (count_25 / den_25) * 100, 0)
@@ -1453,11 +1346,9 @@ make_row_tce <- function(var_name, count_retra, den_retra, count_25, den_25) {
   tibble(Variable = var_name, RETRAUCI = val_retra, `2025` = val_25)
 }
 
-# 3. Calcular denominadores REALES de la base de datos completa
 tot_retra <- sum(df_t2$is_retra, na.rm = TRUE)
 tot_25 <- sum(df_t2$is_25, na.rm = TRUE)
 
-# 4. Iterar sobre las categorías manteniendo el orden exacto de la imagen
 cats_tce <- c(
   "- No TCE", 
   "- Les Difusa Tipo I: sin lesión intracraneal visible", 
@@ -1478,7 +1369,6 @@ rows_tce <- bind_rows(lapply(cats_tce, function(cat) {
 head_tce <- tibble(Variable = "**TCE**", RETRAUCI = "", `2025` = "")
 tabla_tce_final <- bind_rows(head_tce, rows_tce)
 
-# 5. Renderizar la tabla final
 knitr::kable(
   tabla_tce_final, 
   caption = "Codificación de lesiones", 
@@ -1488,23 +1378,16 @@ knitr::kable(
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-library(dplyr)
-library(tidyr)
-
-# 1. Preparar datos garantizando la separación correcta de periodos
 df_t3 <- df %>%
   mutate(
-    # Filtros estrictos de periodo (si el año es NA, va al histórico por defecto)
     is_25 = (!is.na(year) & year == "2025"),
     is_retra = !is_25,
     
-    # Asegurar que los scores son numéricos
     iss_num = suppressWarnings(as.numeric(as.character(iss))),
     rts_num = suppressWarnings(as.numeric(as.character(rts))),
     ps_num = suppressWarnings(as.numeric(as.character(ps))), # TRISS(PS)
     retra_num = suppressWarnings(as.numeric(as.character(retrascore))),
     
-    # Categorizar ISS
     iss_cat = case_when(
       iss_num <= 15 ~ "- ISS \U2264 15",
       iss_num >= 16 & iss_num <= 24 ~ "- ISS 16-24",
@@ -1513,28 +1396,23 @@ df_t3 <- df %>%
     )
   )
 
-# 2. Función para las filas del ISS (Calcula % sobre el total de casos VÁLIDOS)
 make_row_iss <- function(var_name, count_retra, den_retra, count_25, den_25) {
   pct_retra <- ifelse(den_retra > 0, (count_retra / den_retra) * 100, 0)
   pct_25 <- ifelse(den_25 > 0, (count_25 / den_25) * 100, 0)
   
-  # Formato sin espacio antes del paréntesis: 6146(35,9%)
   val_retra <- paste0(count_retra, "(", gsub("\\.", ",", sprintf("%.1f", pct_retra)), "%)")
   val_25 <- paste0(count_25, "(", gsub("\\.", ",", sprintf("%.1f", pct_25)), "%)")
   
   tibble(Variable = var_name, RETRAUCI = val_retra, `2025` = val_25)
 }
 
-# 3. Función para Media(DE) y Mediana(IQR)
 calc_stats_combined <- function(data, variable, is_25_flag) {
-  # Extraer vector filtrado por el periodo correspondiente
   if (is_25_flag) {
     x <- data[[variable]][data$is_25]
   } else {
     x <- data[[variable]][data$is_retra]
   }
   
-  # Quitar NAs para los cálculos matemáticos
   x <- x[!is.na(x)]
   
   if (length(x) == 0) return("")
@@ -1545,25 +1423,21 @@ calc_stats_combined <- function(data, variable, is_25_flag) {
   q25 <- quantile(x, 0.25)
   q75 <- quantile(x, 0.75)
   
-  # Eliminar decimales en IQR si son enteros (como en el 10-12 de tu imagen), si no, 1 decimal
   format_num <- function(num) { gsub("\\.", ",", sprintf("%.1f", num)) }
   format_iqr <- function(num) { ifelse(num %% 1 == 0, as.character(num), format_num(num)) }
   
   line1 <- paste0(format_num(m_mean), "(DE ", format_num(s_sd), ")")
   line2 <- paste0(format_iqr(med), "(IQR ", format_iqr(q25), "-", format_iqr(q75), ")")
   
-  # Salto de línea HTML para la tabla
   paste0(line1, " <br> ", line2)
 }
 
-# 4. Calcular Denominadores
 tot_retra <- sum(df_t3$is_retra, na.rm = TRUE)
 tot_25 <- sum(df_t3$is_25, na.rm = TRUE)
 
 den_iss_retra <- sum(!is.na(df_t3$iss_cat) & df_t3$is_retra, na.rm = TRUE)
 den_iss_25 <- sum(!is.na(df_t3$iss_cat) & df_t3$is_25, na.rm = TRUE)
 
-# 5. Construir las Filas
 row_pacientes_scores <- tibble(Variable = "", RETRAUCI = as.character(tot_retra), `2025` = as.character(tot_25))
 
 head_iss <- tibble(Variable = "**ISS**", RETRAUCI = "", `2025` = "")
@@ -1589,7 +1463,6 @@ row_retrascore <- tibble(
   `2025` = calc_stats_combined(df_t3, "retra_num", TRUE)
 )
 
-# 6. Ensamblar tabla final
 tabla_gravedad_final <- bind_rows(
   row_pacientes_scores,
   head_iss, r_iss1, r_iss2, r_iss3,
@@ -1598,7 +1471,6 @@ tabla_gravedad_final <- bind_rows(
   row_retrascore
 )
 
-# 7. Renderizar (escape = FALSE para leer los <br> de salto de línea)
 knitr::kable(
   tabla_gravedad_final, 
   caption = "Índices de gravedad", 
@@ -1611,20 +1483,15 @@ knitr::kable(
 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-# Definición de periodos (excluyendo 2025 para el histórico)
 is_25 <- (!is.na(df$year) & df$year == "2025")
 is_retra <- (!is.na(df$year) & df$year != "2025")
 
-# Función para especialidades quirúrgicas (1, 2, 3)
 generar_seccion_qx <- function(nombre_fila, var_col) {
-  # Denominadores: Pacientes que han pasado por esa especialidad específica
   tot_r <- sum(df[[var_col]] %in% c(1,2,3) & is_retra, na.rm = TRUE)
   tot_2 <- sum(df[[var_col]] %in% c(1,2,3) & is_25, na.rm = TRUE)
   
-  # Fila cabecera
   cabecera <- tibble(V = paste0("**", nombre_fila, "**"), R = as.character(tot_r), Y = as.character(tot_2))
   
-  # Filas de categorías 1, 2, 3
   filas <- lapply(c(1, 2, 3), function(cat) {
     c_r <- sum(df[[var_col]] == cat & is_retra, na.rm = TRUE)
     c_2 <- sum(df[[var_col]] == cat & is_25, na.rm = TRUE)
@@ -1640,7 +1507,6 @@ generar_seccion_qx <- function(nombre_fila, var_col) {
   bind_rows(cabecera, bind_rows(filas))
 }
 
-# Construcción de la tabla completa
 tabla_recursos_final <- bind_rows(
   tibble(V = "**Cirugías urgentes (primeras 24h)**", R = as.character(sum(is_retra)), Y = as.character(sum(is_25))),
   
@@ -1652,11 +1518,11 @@ tabla_recursos_final <- bind_rows(
   generar_seccion_qx("Otras cirugías", "qx_otras")
 )
 
-# Renderizado
 knitr::kable(tabla_recursos_final, col.names = c("", "RETRAUCI", "2025"), align = "lll")
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#NO ESTÁ BIEN
 # Definición de periodos (excluyendo 2025 para RETRAUCI)
 is_25 <- (!is.na(df$year) & df$year == "2025")
 is_retra <- (!is.na(df$year) & df$year != "2025")
